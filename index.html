@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mis Finanzas - Control de Gastos Mensuales</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app-container" class="app-container">
+        <header class="header">
+            <h1>💰 Mis Finanzas</h1>
+            <nav class="nav-tabs">
+                <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+                <button class="nav-tab" data-tab="mes-actual">Mes Actual</button>
+                <button class="nav-tab" data-tab="historial">Historial</button>
+                <button class="nav-tab" data-tab="comparativas">Comparativas</button>
+            </nav>
+        </header>
+
+        <main class="main-content">
+            <!-- Dashboard -->
+            <section id="dashboard" class="tab-content active">
+                <div class="dashboard-grid">
+                    <!-- Resumen del Mes Completo -->
+                    <div class="card summary-card">
+                        <h3>Resumen Mensual</h3>
+                        <div class="summary-info">
+                            <div class="summary-item">
+                                <span class="label">Ingreso Total</span>
+                                <span id="dash-ingreso" class="value">$0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="label">Total Gastos</span>
+                                <span id="dash-gastos" class="value negative">$0</span>
+                            </div>
+                            <div class="summary-item">
+                                <span class="label">Ahorros</span>
+                                <span id="dash-ahorros" class="value positive">$0</span>
+                            </div>
+                            <div class="summary-item balance">
+                                <span class="label">Balance Disponible</span>
+                                <span id="dash-balance" class="value">$0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Comparativa Quincenas -->
+                    <div class="card fortnight-card">
+                        <h3>📊 Comparativa Quincenas</h3>
+                        <div class="fortnight-comparison">
+                            <div class="fortnight-box">
+                                <h4>1ra Quincena</h4>
+                                <div class="fortnight-stats">
+                                    <div class="stat-row">
+                                        <span>Ingreso:</span>
+                                        <span id="dash-q1-income">$0</span>
+                                    </div>
+                                    <div class="stat-row">
+                                        <span>Gastos:</span>
+                                        <span id="dash-q1-expenses" class="negative">$0</span>
+                                    </div>
+                                    <div class="stat-row">
+                                        <span>Ahorros:</span>
+                                        <span id="dash-q1-savings" class="positive">$0</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="fortnight-divider"></div>
+                            <div class="fortnight-box">
+                                <h4>2da Quincena</h4>
+                                <div class="fortnight-stats">
+                                    <div class="stat-row">
+                                        <span>Ingreso:</span>
+                                        <span id="dash-q2-income">$0</span>
+                                    </div>
+                                    <div class="stat-row">
+                                        <span>Gastos:</span>
+                                        <span id="dash-q2-expenses" class="negative">$0</span>
+                                    </div>
+                                    <div class="stat-row">
+                                        <span>Ahorros:</span>
+                                        <span id="dash-q2-savings" class="positive">$0</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card chart-card">
+                        <h3>Distribución de Gastos</h3>
+                        <div id="chart-container" class="chart-container">
+                            <canvas id="pie-chart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="card recent-card">
+                        <h3>Últimos Movimientos</h3>
+                        <div id="recent-movements" class="movements-list">
+                            <p class="empty-state">No hay movimientos este mes</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Mes Actual -->
+            <section id="mes-actual" class="tab-content">
+                <div class="month-controls">
+                    <button id="prev-month" class="month-nav-btn">← Anterior</button>
+                    <h2 id="current-month-display">Julio 2026</h2>
+                    <button id="next-month" class="month-nav-btn">Siguiente →</button>
+                </div>
+
+                <!-- Selector de Quincena -->
+                <div class="fortnight-selector">
+                    <button class="fortnight-btn active" data-fortnight="1">📅 1ra Quincena (1-15)</button>
+                    <button class="fortnight-btn" data-fortnight="2">📅 2da Quincena (16-31)</button>
+                </div>
+
+                <div class="month-grid">
+                    <!-- Ingreso de la Quincena -->
+                    <div class="card income-card">
+                        <h3>💵 Ingreso Quincenal</h3>
+                        <div class="income-info">
+                            <p class="info-text" id="fortnight-info">Estás en la 1ra quincena del mes</p>
+                        </div>
+                        <div class="income-form">
+                            <input type="number" id="income-input" placeholder="Ingreso de esta quincena" step="0.01">
+                            <button id="save-income" class="btn btn-primary">Guardar Ingreso</button>
+                        </div>
+                        <div class="income-display">
+                            <span>Ingreso esta quincena:</span>
+                            <span id="current-income">$0</span>
+                        </div>
+                        <div class="income-total">
+                            <span>Ingreso total del mes:</span>
+                            <span id="total-month-income">$0</span>
+                        </div>
+                    </div>
+
+                    <!-- Categorías y Gastos -->
+                    <div class="card categories-card">
+                        <div class="card-header">
+                            <h3>📂 Categorías y Gastos</h3>
+                            <button id="add-category" class="btn btn-secondary">+ Nueva Categoría</button>
+                        </div>
+                        <p class="info-text">Los gastos se registran para la quincena seleccionada</p>
+                        
+                        <div id="categories-container" class="categories-container">
+                            <p class="empty-state">Agrega categorías para empezar a registrar gastos</p>
+                        </div>
+                    </div>
+
+                    <!-- Ahorros -->
+                    <div class="card savings-card">
+                        <h3>🐷 Ahorros de la Quincena</h3>
+                        <p class="info-text">El ahorro se resta de tu ingreso quincenal y se acumula</p>
+                        <div class="savings-form">
+                            <input type="number" id="savings-input" placeholder="Cantidad a ahorrar" step="0.01">
+                            <button id="save-savings" class="btn btn-success">Agregar Ahorro</button>
+                        </div>
+                        <div class="savings-display">
+                            <span>Ahorro esta quincena:</span>
+                            <span id="current-savings">$0</span>
+                        </div>
+                        <div class="total-savings">
+                            <span>Ahorro total del mes:</span>
+                            <span id="total-month-savings">$0</span>
+                        </div>
+                        <div class="grand-total-savings">
+                            <span>Ahorro acumulado total:</span>
+                            <span id="total-savings">$0</span>
+                        </div>
+                    </div>
+
+                    <!-- Resumen de la Quincena -->
+                    <div class="card summary-month-card">
+                        <h3>📊 Resumen de la Quincena</h3>
+                        <div class="summary-details">
+                            <div class="detail-row">
+                                <span>Ingreso Quincenal:</span>
+                                <span id="summary-income">$0</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Total Gastos:</span>
+                                <span id="summary-expenses" class="negative">$0</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Ahorros:</span>
+                                <span id="summary-savings" class="positive">$0</span>
+                            </div>
+                            <div class="detail-row total">
+                                <span>Balance Quincena:</span>
+                                <span id="summary-balance">$0</span>
+                            </div>
+                        </div>
+
+                        <h4 style="margin-top: 20px; margin-bottom: 10px;">Resumen Mensual Completo</h4>
+                        <div class="summary-details">
+                            <div class="detail-row">
+                                <span>Ingreso Total Mes:</span>
+                                <span id="summary-total-income">$0</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Gastos Totales Mes:</span>
+                                <span id="summary-total-expenses" class="negative">$0</span>
+                            </div>
+                            <div class="detail-row">
+                                <span>Ahorros Totales Mes:</span>
+                                <span id="summary-total-savings" class="positive">$0</span>
+                            </div>
+                            <div class="detail-row total">
+                                <span>Balance Total Mes:</span>
+                                <span id="summary-total-balance">$0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Historial -->
+            <section id="historial" class="tab-content">
+                <h2>📅 Historial</h2>
+                <div class="history-filters">
+                    <button class="filter-btn active" data-filter="months">Ver por Meses</button>
+                    <button class="filter-btn" data-filter="fortnights">Ver por Quincenas</button>
+                </div>
+                <div id="history-container" class="history-container">
+                    <p class="empty-state">No hay registros aún</p>
+                </div>
+            </section>
+
+            <!-- Comparativas -->
+            <section id="comparativas" class="tab-content">
+                <h2>📈 Comparativas</h2>
+                <div class="comparison-tabs">
+                    <button class="comp-tab active" data-comparison="monthly">Mensuales</button>
+                    <button class="comp-tab" data-comparison="fortnightly">Quincenales</button>
+                </div>
+                <div class="comparisons-grid">
+                    <div class="card comparison-chart-card">
+                        <h3 id="trend-title">Tendencia de Gastos Mensuales</h3>
+                        <canvas id="trend-chart"></canvas>
+                    </div>
+                    <div class="card comparison-chart-card">
+                        <h3 id="savings-title">Tendencia de Ahorros Mensuales</h3>
+                        <canvas id="savings-chart"></canvas>
+                    </div>
+                    <div class="card comparison-stats-card">
+                        <h3>Estadísticas</h3>
+                        <div id="comparison-stats" class="stats-container">
+                            <div class="stat-item">
+                                <span class="label">Promedio Gastos:</span>
+                                <span id="avg-expenses">$0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">Promedio Ahorros:</span>
+                                <span id="avg-savings">$0</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">Mayor Gasto:</span>
+                                <span id="max-expense-month">N/A</span>
+                            </div>
+                            <div class="stat-item">
+                                <span class="label">Mayor Ahorro:</span>
+                                <span id="max-savings-month">N/A</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal para agregar categoría -->
+    <div id="category-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <h3>Nueva Categoría</h3>
+            <p class="info-text">Las categorías se comparten entre ambas quincenas</p>
+            <input type="text" id="category-name" placeholder="Nombre de la categoría (ej: Mascotas)">
+            <div class="modal-actions">
+                <button id="save-category" class="btn btn-primary">Crear Categoría</button>
+                <button id="cancel-category" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para agregar gasto -->
+    <div id="expense-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-expense-modal">&times;</span>
+            <h3>Agregar Gasto</h3>
+            <p id="expense-category-name">Categoría: </p>
+            <p id="expense-fortnight-info" class="info-text">Quincena: 1ra</p>
+            <input type="text" id="expense-desc" placeholder="Descripción del gasto">
+            <input type="number" id="expense-amount" placeholder="Monto" step="0.01">
+            <div class="modal-actions">
+                <button id="save-expense" class="btn btn-primary">Agregar Gasto</button>
+                <button id="cancel-expense" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para editar gasto -->
+    <div id="edit-expense-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-edit-modal">&times;</span>
+            <h3>Editar Gasto</h3>
+            <input type="hidden" id="edit-expense-id">
+            <input type="text" id="edit-expense-desc" placeholder="Descripción del gasto">
+            <input type="number" id="edit-expense-amount" placeholder="Monto" step="0.01">
+            <div class="modal-actions">
+                <button id="update-expense" class="btn btn-primary">Actualizar</button>
+                <button id="delete-expense" class="btn btn-danger">Eliminar</button>
+                <button id="cancel-edit-expense" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Indicador de sync -->
+    <div id="sync-indicator" class="sync-indicator hidden">
+        <span id="sync-icon">☁️</span>
+        <span id="sync-text">Conectado</span>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
