@@ -13,6 +13,7 @@
             <nav class="nav-tabs">
                 <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
                 <button class="nav-tab" data-tab="mes-actual">Mes Actual</button>
+                <button class="nav-tab" data-tab="ahorros">Ahorros</button>
                 <button class="nav-tab" data-tab="historial">Historial</button>
                 <button class="nav-tab" data-tab="comparativas">Comparativas</button>
             </nav>
@@ -218,6 +219,62 @@
                 </div>
             </section>
 
+            <!-- Ahorros Personales -->
+            <section id="ahorros" class="tab-content">
+                <h2>🐷 Ahorros Personales</h2>
+                <p class="info-text">Registra tus ahorros y sus salidas. Ejemplo: "Trabajo extra", "Venta de algo", etc.</p>
+
+                <div class="savings-personal-grid">
+                    <!-- Balance -->
+                    <div class="card savings-balance-card">
+                        <h3>💰 Balance Total</h3>
+                        <div class="savings-balance-display">
+                            <span id="savings-balance" class="savings-balance-amount">$0.00</span>
+                        </div>
+                        <div class="savings-stats">
+                            <div class="savings-stat">
+                                <span class="label">Total Entradas:</span>
+                                <span id="savings-total-in" class="positive">$0.00</span>
+                            </div>
+                            <div class="savings-stat">
+                                <span class="label">Total Salidas:</span>
+                                <span id="savings-total-out" class="negative">$0.00</span>
+                            </div>
+                            <div class="savings-stat">
+                                <span class="label">Transacciones:</span>
+                                <span id="savings-count">0</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Agregar Entrada -->
+                    <div class="card savings-add-card">
+                        <h3>📥 Agregar Ahorro</h3>
+                        <p class="info-text">Dinero que entra a tus ahorros</p>
+                        <input type="number" id="savings-in-amount" placeholder="Monto" step="0.01">
+                        <input type="text" id="savings-in-reason" placeholder="Razón (ej: Trabajo extra, Venta)">
+                        <button id="add-savings-in" class="btn btn-success">Agregar Entrada</button>
+                    </div>
+
+                    <!-- Agregar Salida -->
+                    <div class="card savings-add-card">
+                        <h3>📤 Sacar de Ahorros</h3>
+                        <p class="info-text">Dinero que sale de tus ahorros</p>
+                        <input type="number" id="savings-out-amount" placeholder="Monto" step="0.01">
+                        <input type="text" id="savings-out-reason" placeholder="Razón (ej: Viaje, Emergencia)">
+                        <button id="add-savings-out" class="btn btn-danger">Agregar Salida</button>
+                    </div>
+
+                    <!-- Historial de Ahorros -->
+                    <div class="card savings-history-card">
+                        <h3>📋 Historial de Ahorros</h3>
+                        <div id="savings-history" class="savings-history-list">
+                            <p class="empty-state">No hay transacciones de ahorros aún</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Historial -->
             <section id="historial" class="tab-content">
                 <h2>📅 Historial</h2>
@@ -314,6 +371,22 @@
                 <button id="update-expense" class="btn btn-primary">Actualizar</button>
                 <button id="delete-expense" class="btn btn-danger">Eliminar</button>
                 <button id="cancel-edit-expense" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para editar transacción de ahorros -->
+    <div id="edit-savings-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-edit-savings-modal">&times;</span>
+            <h3>Editar Transacción</h3>
+            <input type="hidden" id="edit-savings-id">
+            <input type="text" id="edit-savings-reason" placeholder="Razón">
+            <input type="number" id="edit-savings-amount" placeholder="Monto" step="0.01">
+            <div class="modal-actions">
+                <button id="update-savings" class="btn btn-primary">Actualizar</button>
+                <button id="delete-savings" class="btn btn-danger">Eliminar</button>
+                <button id="cancel-edit-savings" class="btn btn-secondary">Cancelar</button>
             </div>
         </div>
     </div>

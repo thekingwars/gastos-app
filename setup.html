@@ -3,124 +3,392 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setup - Mis Finanzas</title>
+    <title>Setup DB - Mis Finanzas</title>
     <style>
-        body { font-family: monospace; background: #0f172a; color: #f8fafc; padding: 40px; max-width: 800px; margin: 0 auto; }
+        body { font-family: monospace; background: #0f172a; color: #f8fafc; padding: 40px; max-width: 1000px; margin: 0 auto; }
         h1 { color: #6366f1; }
         h2 { color: #10b981; margin-top: 30px; }
         .step { background: #1e293b; padding: 20px; border-radius: 12px; margin: 20px 0; border-left: 4px solid #6366f1; }
         .step.done { border-left-color: #10b981; }
+        .step.active { border-left-color: #f59e0b; }
         pre { background: #0f172a; padding: 15px; border-radius: 8px; overflow-x: auto; border: 1px solid #334155; }
         code { color: #a5b4fc; }
         .btn { background: #6366f1; color: white; border: none; padding: 12px 24px; border-radius: 8px; cursor: pointer; font-size: 16px; margin: 10px 5px; }
         .btn:hover { background: #4f46e5; }
         .btn.success { background: #10b981; }
+        .btn.danger { background: #ef4444; }
+        .btn:disabled { background: #475569; cursor: not-allowed; }
         .note { background: #fbbf24; color: #0f172a; padding: 12px; border-radius: 8px; margin: 15px 0; font-weight: bold; }
         #status { margin-top: 20px; padding: 15px; border-radius: 8px; display: none; }
         #status.ok { display: block; background: rgba(16,185,129,0.15); border: 1px solid #10b981; color: #6ee7b7; }
         #status.error { display: block; background: rgba(239,68,68,0.15); border: 1px solid #ef4444; color: #fca5a5; }
+        .log { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 15px; max-height: 300px; overflow-y: auto; font-size: 13px; margin: 15px 0; }
+        .log-entry { margin: 5px 0; padding: 5px 0; border-bottom: 1px solid #1e293b; }
+        .log-entry.success { color: #10b981; }
+        .log-entry.error { color: #ef4444; }
+        .log-entry.info { color: #6366f1; }
+        table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px; }
+        th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background: #1e293b; color: #a5b4fc; }
     </style>
 </head>
 <body>
-    <h1>💰 Setup - Mis Finanzas</h1>
-    <p>Sigue estos pasos para crear la tabla en Supabase:</p>
+    <h1>🗄️ Setup Base de Datos - Mis Finanzas</h1>
+    <p>Migración de JSON blob a esquema relacional normalizado</p>
 
     <div class="step" id="step1">
-        <h2>Paso 1: Copia este SQL</h2>
-        <p>Copia todo el código de abajo:</p>
-        <pre><code id="sql-code">CREATE TABLE IF NOT EXISTS finance_data (
-  id TEXT PRIMARY KEY,
-  data JSONB NOT NULL DEFAULT '{}'::jsonb,
-  updated_at TIMESTAMPTZ DEFAULT now()
+        <h2>Paso 1: Ejecutar Schema SQL</h2>
+        <p>Copia y ejecuta este SQL en <strong>SQL Editor</strong> de Supabase:</p>
+        <pre><code id="schema-sql">-- ============================================
+-- ESQUEMA NORMALIZADO - MIS FINANZAS
+-- ============================================
+
+-- 1. MESES
+CREATE TABLE IF NOT EXISTS months (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    year INT NOT NULL,
+    month INT NOT NULL,  -- 1-12
+    total_savings NUMERIC(12,2) DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(year, month)
 );
 
-ALTER TABLE finance_data ENABLE ROW LEVEL SECURITY;
+-- 2. QUINCENAS
+CREATE TABLE IF NOT EXISTS fortnights (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    month_id UUID NOT NULL REFERENCES months(id) ON DELETE CASCADE,
+    fortnight_number INT NOT NULL CHECK (fortnight_number IN (1, 2)),
+    income NUMERIC(12,2) DEFAULT 0,
+    savings NUMERIC(12,2) DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(month_id, fortnight_number)
+);
 
-DROP POLICY IF EXISTS "Allow all" ON finance_data;
+-- 3. CATEGORÍAS (por mes)
+CREATE TABLE IF NOT EXISTS categories (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    month_id UUID NOT NULL REFERENCES months(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
 
-CREATE POLICY "Allow all" ON finance_data
-  FOR ALL
-  USING (true)
-  WITH CHECK (true);
+-- 4. GASTOS
+CREATE TABLE IF NOT EXISTS expenses (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    fortnight_id UUID NOT NULL REFERENCES fortnights(id) ON DELETE CASCADE,
+    description TEXT NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    expense_date TIMESTAMPTZ DEFAULT now(),
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
 
-INSERT INTO finance_data (id, data, updated_at)
-VALUES ('main', '{}'::jsonb, now())
-ON CONFLICT (id) DO NOTHING;</code></pre>
-        <button class="btn" onclick="copySQL()">Copiar SQL</button>
+-- 5. MOVIMIENTOS (historial de ingresos/gastos/ahorros por quincena)
+CREATE TABLE IF NOT EXISTS movements (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    fortnight_id UUID NOT NULL REFERENCES fortnights(id) ON DELETE CASCADE,
+    type TEXT NOT NULL CHECK (type IN ('income', 'expense', 'savings')),
+    description TEXT NOT NULL,
+    amount NUMERIC(12,2) NOT NULL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. AHORROS PERSONALES (sección separada)
+CREATE TABLE IF NOT EXISTS personal_savings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
+    amount NUMERIC(12,2) NOT NULL,
+    reason TEXT NOT NULL,
+    entry_date TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- ÍNDICES PARA PERFORMANCE
+CREATE INDEX IF NOT EXISTS idx_fortnights_month ON fortnights(month_id);
+CREATE INDEX IF NOT EXISTS idx_categories_month ON categories(month_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_id);
+CREATE INDEX IF NOT EXISTS idx_expenses_fortnight ON expenses(fortnight_id);
+CREATE INDEX IF NOT EXISTS idx_movements_fortnight ON movements(fortnight_id);
+CREATE INDEX IF NOT EXISTS idx_personal_savings_date ON personal_savings(entry_date DESC);
+
+-- RLS POLICIES (permitir todo con anon key)
+ALTER TABLE months ENABLE ROW LEVEL SECURITY;
+ALTER TABLE fortnights ENABLE ROW LEVEL SECURITY;
+ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
+ALTER TABLE movements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE personal_savings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "allow_all" ON months;
+DROP POLICY IF EXISTS "allow_all" ON fortnights;
+DROP POLICY IF EXISTS "allow_all" ON categories;
+DROP POLICY IF EXISTS "allow_all" ON expenses;
+DROP POLICY IF EXISTS "allow_all" ON movements;
+DROP POLICY IF EXISTS "allow_all" ON personal_savings;
+
+CREATE POLICY "allow_all" ON months FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON fortnights FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON categories FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON expenses FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON movements FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON personal_savings FOR ALL USING (true) WITH CHECK (true);</code></pre>
+        <button class="btn" onclick="copySchema()">Copiar Schema</button>
     </div>
 
     <div class="step" id="step2">
-        <h2>Paso 2: Ejecuta en Supabase</h2>
-        <ol>
-            <li>Ve a <a href="https://supabase.com/dashboard" target="_blank" style="color:#a5b4fc">supabase.com/dashboard</a></li>
-            <li>Selecciona tu proyecto</li>
-            <li>Ve a <strong>SQL Editor</strong> en el menú lateral</li>
-            <li>Pega el SQL y haz clic en <strong>Run</strong></li>
-        </ol>
+        <h2>Paso 2: Ejecutar y Verificar</h2>
+        <p>Después de ejecutar el SQL arriba, haz clic en verificar:</p>
+        <button class="btn success" onclick="verifySchema()">Verificar Tablas Creadas</button>
     </div>
 
     <div class="step" id="step3">
-        <h2>Paso 3: Verificar</h2>
-        <p>Haz clic en verificar para comprobar que la tabla se creó:</p>
-        <button class="btn success" onclick="verifyTable()">Verificar tabla</button>
+        <h2>Paso 3: Migrar Datos de Tabla Antigua</h2>
+        <p>Lee la tabla <code>finance_data</code> (JSON blob) y migra a las nuevas tablas:</p>
+        <button class="btn" id="migrate-btn" onclick="migrateData()" disabled>Migrar Datos</button>
+    </div>
+
+    <div class="step" id="step4">
+        <h2>Paso 4: Eliminar Tabla Antigua</h2>
+        <p>Una vez verificada la migración, elimina la tabla legacy:</p>
+        <button class="btn danger" id="drop-btn" onclick="dropOldTable()" disabled>Eliminar finance_data</button>
+    </div>
+
+    <div class="note">
+        ⚠️ La app principal (index.html) seguirá funcionando con la tabla antigua hasta que completes la migración.
     </div>
 
     <div id="status"></div>
+    <div class="log" id="log"></div>
 
-    <div class="note">
-        ⚠️ Después de crear la tabla, abre tu app principal (index.html) y ejecuta el script de migración en la consola.
-    </div>
-
-    <h2>Script de Migración</h2>
-    <p>Una vez creada la tabla, abre la app y ejecuta esto en la consola (F12):</p>
-    <pre><code id="migration-code">(async () => {
-    const data = JSON.parse(localStorage.getItem('financeAppData'));
-    if (!data || Object.keys(data.months).length === 0) {
-        alert('No hay datos en localStorage para migrar');
-        return;
-    }
-    const { error } = await app.supabase.from('finance_data').upsert({
-        id: 'main',
-        data: data,
-        updated_at: new Date().toISOString()
-    }, { onConflict: 'id' });
-    if (error) alert('Error: ' + error.message);
-    else alert('✅ Datos migrados correctamente');
-})();</code></pre>
-    <button class="btn" onclick="copyMigration()">Copiar script de migración</button>
-
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
-        function copySQL() {
-            navigator.clipboard.writeText(document.getElementById('sql-code').textContent);
-            alert('✅ SQL copiado');
+        const SUPABASE_URL = 'https://wtsyqitibsnmadqfgvws.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_pHmKecskZROITf5B1aZopw_n8ErgLc1';
+        let supabaseClient = null;
+
+        function log(msg, type = 'info') {
+            const el = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = 'log-entry ' + type;
+            entry.textContent = new Date().toLocaleTimeString() + ' - ' + msg;
+            el.appendChild(entry);
+            el.scrollTop = el.scrollHeight;
         }
-        function copyMigration() {
-            navigator.clipboard.writeText(document.getElementById('migration-code').textContent);
-            alert('✅ Script copiado');
+
+        function setStatus(msg, ok) {
+            const el = document.getElementById('status');
+            el.className = ok ? 'ok' : 'error';
+            el.textContent = msg;
         }
-        async function verifyTable() {
-            const status = document.getElementById('status');
-            try {
-                const { data, error } = await supabaseClient.from('finance_data').select('id').limit(1);
-                if (error) throw error;
-                status.className = 'ok';
-                status.innerHTML = '✅ Tabla creada correctamente. Ya puedes abrir tu app.';
-                document.getElementById('step3').classList.add('done');
-            } catch (e) {
-                status.className = 'error';
-                status.innerHTML = '❌ Error: ' + e.message + '<br>Asegúrate de haber ejecutado el SQL en Supabase.';
+
+        function copySchema() {
+            navigator.clipboard.writeText(document.getElementById('schema-sql').textContent);
+            alert('✅ Schema copiado al portapapeles');
+        }
+
+        async function init() {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
+            script.onload = () => {
+                supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+                log('Cliente Supabase inicializado');
+            };
+            document.head.appendChild(script);
+            await new Promise(r => setTimeout(r, 500));
+        }
+
+        async function verifySchema() {
+            if (!supabaseClient) await init();
+            const tables = ['months', 'fortnights', 'categories', 'expenses', 'movements', 'personal_savings'];
+            let allOk = true;
+            
+            for (const t of tables) {
+                try {
+                    const { error } = await supabaseClient.from(t).select('id').limit(1);
+                    if (error) {
+                        log(`❌ Tabla ${t}: ${error.message}`, 'error');
+                        allOk = false;
+                    } else {
+                        log(`✅ Tabla ${t} existe`, 'success');
+                    }
+                } catch (e) {
+                    log(`❌ Tabla ${t}: ${e.message}`, 'error');
+                    allOk = false;
+                }
+            }
+            
+            if (allOk) {
+                document.getElementById('step2').classList.add('done');
+                document.getElementById('step3').classList.add('active');
+                document.getElementById('migrate-btn').disabled = false;
+                setStatus('✅ Todas las tablas existen. Puedes migrar.', true);
+            } else {
+                setStatus('❌ Faltan tablas. Ejecuta el SQL primero.', false);
             }
         }
 
-        const SUPABASE_URL = 'https://wtsyqitibsnmadqfgvws.supabase.co';
-        const SUPABASE_KEY = 'sb_publishable_pHmKecskZROITf5B1aZopw_n8ErgLc1';
-        let supabaseClient;
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-        script.onload = () => {
-            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-        };
-        document.head.appendChild(script);
+        async function migrateData() {
+            if (!supabaseClient) await init();
+            document.getElementById('migrate-btn').disabled = true;
+            document.getElementById('migrate-btn').textContent = 'Migrando...';
+            
+            try {
+                log('📥 Leyendo tabla finance_data...');
+                const { data: oldData, error } = await supabaseClient
+                    .from('finance_data')
+                    .select('data')
+                    .eq('id', 'main')
+                    .single();
+                
+                if (error || !oldData) {
+                    log('⚠️ No hay datos en finance_data o error: ' + (error?.message || 'vacío'), 'info');
+                    document.getElementById('step3').classList.add('done');
+                    document.getElementById('step4').classList.add('active');
+                    document.getElementById('drop-btn').disabled = false;
+                    return;
+                }
+                
+                const data = oldData.data;
+                log(`📦 Datos leídos: ${Object.keys(data.months || {}).length} meses`, 'info');
+                
+                // Migrar meses, quincenas, categorías, gastos, movimientos
+                for (const [monthKey, monthData] of Object.entries(data.months || {})) {
+                    const [year, month] = monthKey.split('-').map(Number);
+                    
+                    // Insertar mes
+                    const { data: monthRow, error: monthErr } = await supabaseClient
+                        .from('months')
+                        .upsert({ year, month, total_savings: data.totalSavings || 0 })
+                        .select('id')
+                        .single();
+                    if (monthErr) throw monthErr;
+                    const monthId = monthRow.id;
+                    log(`  ✅ Mes ${monthKey} (id: ${monthId})`);
+                    
+                    // Quincenas
+                    for (const fnNum of [1, 2]) {
+                        const fnData = monthData.fortnights?.[fnNum] || { income: 0, savings: 0, movements: [] };
+                        const { data: fnRow, error: fnErr } = await supabaseClient
+                            .from('fortnights')
+                            .upsert({ 
+                                month_id: monthId, 
+                                fortnight_number: fnNum,
+                                income: fnData.income || 0,
+                                savings: fnData.savings || 0
+                            })
+                            .select('id')
+                            .single();
+                        if (fnErr) throw fnErr;
+                        const fortnightId = fnRow.id;
+                        
+                        // Movimientos
+                        if (fnData.movements?.length) {
+                            for (const mv of fnData.movements) {
+                                await supabaseClient.from('movements').insert({
+                                    fortnight_id: fortnightId,
+                                    type: mv.type,
+                                    description: mv.description,
+                                    amount: mv.amount,
+                                    timestamp: new Date(mv.timestamp).toISOString()
+                                });
+                            }
+                            log(`    📝 ${fnData.movements.length} movimientos quincena ${fnNum}`);
+                        }
+                    }
+                    
+                    // Categorías y gastos
+                    for (const cat of monthData.categories || []) {
+                        const { data: catRow, error: catErr } = await supabaseClient
+                            .from('categories')
+                            .upsert({ month_id: monthId, name: cat.name })
+                            .select('id')
+                            .single();
+                        if (catErr) throw catErr;
+                        const categoryId = catRow.id;
+                        
+                        for (const fnNum of [1, 2]) {
+                            const fnExpenses = cat.expenses?.[fnNum] || [];
+                            const { data: fnRow } = await supabaseClient
+                                .from('fortnights')
+                                .select('id')
+                                .eq('month_id', monthId)
+                                .eq('fortnight_number', fnNum)
+                                .single();
+                            
+                            for (const exp of fnExpenses) {
+                                await supabaseClient.from('expenses').insert({
+                                    category_id: categoryId,
+                                    fortnight_id: fnRow.id,
+                                    description: exp.description,
+                                    amount: exp.amount,
+                                    expense_date: new Date(exp.id).toISOString() // usar id como timestamp aproximado
+                                });
+                            }
+                        }
+                        log(`    📂 Categoría "${cat.name}" con gastos`);
+                    }
+                }
+                
+                // Migrar ahorros personales
+                if (data.savings?.entries?.length) {
+                    for (const entry of data.savings.entries) {
+                        await supabaseClient.from('personal_savings').insert({
+                            type: entry.type,
+                            amount: entry.amount,
+                            reason: entry.reason,
+                            entry_date: new Date(entry.date).toISOString()
+                        });
+                    }
+                    log(`💰 ${data.savings.entries.length} ahorros personales migrados`, 'success');
+                }
+                
+                log('✅ Migración completada', 'success');
+                document.getElementById('step3').classList.add('done');
+                document.getElementById('step4').classList.add('active');
+                document.getElementById('drop-btn').disabled = false;
+                setStatus('✅ Migración exitosa. Verifica y elimina tabla antigua.', true);
+                
+            } catch (e) {
+                log('❌ Error en migración: ' + e.message, 'error');
+                setStatus('❌ Error: ' + e.message, false);
+            } finally {
+                document.getElementById('migrate-btn').disabled = false;
+                document.getElementById('migrate-btn').textContent = 'Migrar Datos';
+            }
+        }
+
+        async function dropOldTable() {
+            if (!supabaseClient) await init();
+            if (!confirm('¿Seguro? Esto borra la tabla finance_data permanentemente.')) return;
+            
+            try {
+                const { count: monthsCount } = await supabaseClient.from('months').select('*', { count: 'exact', head: true });
+                const { count: savingsCount } = await supabaseClient.from('personal_savings').select('*', { count: 'exact', head: true });
+                
+                if (!monthsCount && !savingsCount) {
+                    alert('⚠️ No hay datos en las nuevas tablas. No elimines la antigua.');
+                    return;
+                }
+                
+                const { error } = await supabaseClient.from('finance_data').delete().neq('id', '__none__');
+                if (error) throw error;
+                
+                log('✅ Datos de finance_data eliminados', 'success');
+                setStatus('✅ Limpieza completada.', true);
+                
+            } catch (e) {
+                log('❌ Error: ' + e.message, 'error');
+                setStatus('❌ Error: ' + e.message, false);
+            }
+        }
+
+        init();
     </script>
 </body>
 </html>
