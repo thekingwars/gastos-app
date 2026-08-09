@@ -22,8 +22,23 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Validate JavaScript
+        run: npm run check
+      - name: Run tests
+        run: npm test
+
   # Single deploy job since we're just deploying
   deploy:
+    needs: quality
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

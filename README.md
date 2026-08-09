@@ -95,7 +95,9 @@ O simplemente haz doble clic en `index.html` desde el Finder.
 
 ## 💾 Almacenamiento
 
-Los datos se guardan automáticamente en el navegador usando `localStorage`. Puedes cerrar y volver a abrir la app sin perder información.
+Los datos se guardan automáticamente en Supabase. La aplicación es personal y usa el proyecto configurado en `app.js`; no depende de `localStorage` ni funciona offline.
+
+Si la base de datos todavía usa la tabla antigua `finance_data`, abre `setup.html`, ejecuta el esquema relacional en el SQL Editor y usa la migración idempotente. La app no elimina datos legacy automáticamente.
 
 ## 📱 Compatible con
 
@@ -108,14 +110,24 @@ Los datos se guardan automáticamente en el navegador usando `localStorage`. Pue
 - HTML5
 - CSS3 (con variables CSS)
 - JavaScript vanilla
-- Chart.js (para gráficos)
+- Chart.js 4 (para gráficos)
+- Supabase (persistencia)
+- Node.js test runner (pruebas de lógica)
 
 ## 📝 Notas
 
 - La app usa moneda USD por defecto
-- Los datos se almacenan localmente en tu navegador
-- No requiere instalación ni servidor
-- Funciona sin conexión a internet
+- Los datos se almacenan en Supabase
+- No requiere servidor local; puede abrirse desde `index.html`
+- Requiere conexión a internet para Supabase y Chart.js
 - Las categorías se comparten entre ambas quincenas del mes
 - Cada quincena mantiene sus gastos e ingresos por separado
-# gastos-app
+
+## 🧪 Comprobaciones
+
+```bash
+npm test
+npm run check
+```
+
+Las pruebas cubren cálculos monetarios, balances, historial, movimientos derivados y escape de texto introducido por el usuario.

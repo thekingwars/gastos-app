@@ -47,7 +47,7 @@
 CREATE TABLE IF NOT EXISTS months (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     year INT NOT NULL,
-    month INT NOT NULL,  -- 1-12
+    month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
     total_savings NUMERIC(12,2) DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
@@ -59,8 +59,8 @@ CREATE TABLE IF NOT EXISTS fortnights (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     month_id UUID NOT NULL REFERENCES months(id) ON DELETE CASCADE,
     fortnight_number INT NOT NULL CHECK (fortnight_number IN (1, 2)),
-    income NUMERIC(12,2) DEFAULT 0,
-    savings NUMERIC(12,2) DEFAULT 0,
+    income NUMERIC(12,2) DEFAULT 0 CHECK (income >= 0),
+    savings NUMERIC(12,2) DEFAULT 0 CHECK (savings >= 0),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
     UNIQUE(month_id, fortnight_number)
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS expenses (
     category_id UUID NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
     fortnight_id UUID NOT NULL REFERENCES fortnights(id) ON DELETE CASCADE,
     description TEXT NOT NULL,
-    amount NUMERIC(12,2) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
     expense_date TIMESTAMPTZ DEFAULT now(),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
@@ -102,12 +102,17 @@ CREATE TABLE IF NOT EXISTS movements (
 CREATE TABLE IF NOT EXISTS personal_savings (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type TEXT NOT NULL CHECK (type IN ('income', 'expense')),
-    amount NUMERIC(12,2) NOT NULL,
+    amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
     reason TEXT NOT NULL,
     entry_date TIMESTAMPTZ NOT NULL,
+    source_fortnight_id UUID REFERENCES fortnights(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Compatibilidad con instalaciones existentes
+ALTER TABLE personal_savings
+    ADD COLUMN IF NOT EXISTS source_fortnight_id UUID REFERENCES fortnights(id) ON DELETE SET NULL;
 
 -- ÍNDICES PARA PERFORMANCE
 CREATE INDEX IF NOT EXISTS idx_fortnights_month ON fortnights(month_id);
@@ -116,6 +121,54 @@ CREATE INDEX IF NOT EXISTS idx_expenses_category ON expenses(category_id);
 CREATE INDEX IF NOT EXISTS idx_expenses_fortnight ON expenses(fortnight_id);
 CREATE INDEX IF NOT EXISTS idx_movements_fortnight ON movements(fortnight_id);
 CREATE INDEX IF NOT EXISTS idx_personal_savings_date ON personal_savings(entry_date DESC);
+CREATE INDEX IF NOT EXISTS idx_categories_month_name ON categories(month_id, lower(trim(name)));
+CREATE UNIQUE INDEX IF NOT EXISTS idx_personal_savings_source_fortnight
+    ON personal_savings(source_fortnight_id)
+    WHERE source_fortnight_id IS NOT NULL;
+
+-- Escritura atómica del ahorro quincenal y su entrada automática
+CREATE OR REPLACE FUNCTION public.set_savings_and_sync(
+    p_fortnight_id UUID,
+    p_amount NUMERIC,
+    p_reason TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    automatic_id UUID;
+BEGIN
+    IF p_amount < 0 THEN
+        RAISE EXCEPTION 'El ahorro no puede ser negativo';
+    END IF;
+
+    UPDATE fortnights
+    SET savings = p_amount, updated_at = now()
+    WHERE id = p_fortnight_id;
+
+    SELECT id INTO automatic_id
+    FROM personal_savings
+    WHERE source_fortnight_id = p_fortnight_id
+    LIMIT 1;
+
+    IF p_amount = 0 THEN
+        IF automatic_id IS NOT NULL THEN
+            DELETE FROM personal_savings WHERE id = automatic_id;
+        END IF;
+    ELSIF automatic_id IS NOT NULL THEN
+        UPDATE personal_savings
+        SET amount = p_amount, reason = p_reason, updated_at = now()
+        WHERE id = automatic_id;
+    ELSE
+        INSERT INTO personal_savings(type, amount, reason, entry_date, source_fortnight_id)
+        VALUES ('income', p_amount, p_reason, now(), p_fortnight_id);
+    END IF;
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.set_savings_and_sync(UUID, NUMERIC, TEXT) TO anon, authenticated;
 
 -- RLS POLICIES (permitir todo con anon key)
 ALTER TABLE months ENABLE ROW LEVEL SECURITY;
@@ -138,35 +191,35 @@ CREATE POLICY "allow_all" ON categories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON expenses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON movements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON personal_savings FOR ALL USING (true) WITH CHECK (true);</code></pre>
-        <button class="btn" onclick="copySchema()">Copiar Schema</button>
+        <button class="btn" id="copy-schema-btn" type="button">Copiar Schema</button>
     </div>
 
     <div class="step" id="step2">
         <h2>Paso 2: Ejecutar y Verificar</h2>
         <p>Después de ejecutar el SQL arriba, haz clic en verificar:</p>
-        <button class="btn success" onclick="verifySchema()">Verificar Tablas Creadas</button>
+        <button class="btn success" id="verify-schema-btn" type="button">Verificar Tablas Creadas</button>
     </div>
 
     <div class="step" id="step3">
         <h2>Paso 3: Migrar Datos de Tabla Antigua</h2>
         <p>Lee la tabla <code>finance_data</code> (JSON blob) y migra a las nuevas tablas:</p>
-        <button class="btn" id="migrate-btn" onclick="migrateData()" disabled>Migrar Datos</button>
+        <button class="btn" id="migrate-btn" type="button" disabled>Migrar Datos</button>
     </div>
 
     <div class="step" id="step4">
-        <h2>Paso 4: Eliminar Tabla Antigua</h2>
-        <p>Una vez verificada la migración, elimina la tabla legacy:</p>
-        <button class="btn danger" id="drop-btn" onclick="dropOldTable()" disabled>Eliminar finance_data</button>
+        <h2>Paso 4: Verificar migración</h2>
+        <p>La eliminación de la tabla antigua se hace manualmente desde el SQL Editor, nunca desde el cliente.</p>
+        <button class="btn danger" id="drop-btn" type="button" disabled>Mostrar SQL de limpieza</button>
     </div>
 
     <div class="note">
-        ⚠️ La app principal (index.html) seguirá funcionando con la tabla antigua hasta que completes la migración.
+        ⚠️ La app principal usa el esquema relacional. La tabla antigua solo se conserva durante la migración y no se elimina desde este navegador.
     </div>
 
     <div id="status"></div>
     <div class="log" id="log"></div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
     <script>
         const SUPABASE_URL = 'https://wtsyqitibsnmadqfgvws.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_pHmKecskZROITf5B1aZopw_n8ErgLc1';
@@ -187,20 +240,21 @@ CREATE POLICY "allow_all" ON personal_savings FOR ALL USING (true) WITH CHECK (t
             el.textContent = msg;
         }
 
-        function copySchema() {
-            navigator.clipboard.writeText(document.getElementById('schema-sql').textContent);
-            alert('✅ Schema copiado al portapapeles');
+        async function copySchema() {
+            try {
+                await navigator.clipboard.writeText(document.getElementById('schema-sql').textContent);
+                alert('✅ Schema copiado al portapapeles');
+            } catch (error) {
+                log('No se pudo copiar automáticamente. Selecciona el SQL manualmente.', 'error');
+            }
         }
 
-        async function init() {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2';
-            script.onload = () => {
-                supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-                log('Cliente Supabase inicializado');
-            };
-            document.head.appendChild(script);
-            await new Promise(r => setTimeout(r, 500));
+        function init() {
+            if (supabaseClient) return supabaseClient;
+            if (!window.supabase?.createClient) throw new Error('No se pudo cargar Supabase.');
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            log('Cliente Supabase inicializado');
+            return supabaseClient;
         }
 
         async function verifySchema() {
@@ -233,161 +287,167 @@ CREATE POLICY "allow_all" ON personal_savings FOR ALL USING (true) WITH CHECK (t
             }
         }
 
+        function safeIsoDate(value) {
+            const date = new Date(value);
+            return Number.isNaN(date.getTime()) ? new Date().toISOString() : date.toISOString();
+        }
+
+        async function findOne(table, filters) {
+            let query = supabaseClient.from(table).select('id');
+            Object.entries(filters).forEach(([column, value]) => { query = query.eq(column, value); });
+            const { data, error } = await query.limit(1);
+            if (error) throw error;
+            return data?.[0] || null;
+        }
+
         async function migrateData() {
-            if (!supabaseClient) await init();
-            document.getElementById('migrate-btn').disabled = true;
-            document.getElementById('migrate-btn').textContent = 'Migrando...';
-            
+            init();
+            const button = document.getElementById('migrate-btn');
+            button.disabled = true;
+            button.textContent = 'Migrando...';
+            const stats = { months: 0, fortnights: 0, categories: 0, expenses: 0, savings: 0, skipped: 0 };
+
             try {
                 log('📥 Leyendo tabla finance_data...');
                 const { data: oldData, error } = await supabaseClient
-                    .from('finance_data')
-                    .select('data')
-                    .eq('id', 'main')
-                    .single();
-                
-                if (error || !oldData) {
-                    log('⚠️ No hay datos en finance_data o error: ' + (error?.message || 'vacío'), 'info');
-                    document.getElementById('step3').classList.add('done');
-                    document.getElementById('step4').classList.add('active');
-                    document.getElementById('drop-btn').disabled = false;
-                    return;
-                }
-                
-                const data = oldData.data;
-                log(`📦 Datos leídos: ${Object.keys(data.months || {}).length} meses`, 'info');
-                
-                // Migrar meses, quincenas, categorías, gastos, movimientos
-                for (const [monthKey, monthData] of Object.entries(data.months || {})) {
-                    const [year, month] = monthKey.split('-').map(Number);
-                    
-                    // Insertar mes
-                    const { data: monthRow, error: monthErr } = await supabaseClient
-                        .from('months')
-                        .upsert({ year, month, total_savings: data.totalSavings || 0 })
-                        .select('id')
-                        .single();
-                    if (monthErr) throw monthErr;
-                    const monthId = monthRow.id;
-                    log(`  ✅ Mes ${monthKey} (id: ${monthId})`);
-                    
-                    // Quincenas
-                    for (const fnNum of [1, 2]) {
-                        const fnData = monthData.fortnights?.[fnNum] || { income: 0, savings: 0, movements: [] };
-                        const { data: fnRow, error: fnErr } = await supabaseClient
-                            .from('fortnights')
-                            .upsert({ 
-                                month_id: monthId, 
-                                fortnight_number: fnNum,
-                                income: fnData.income || 0,
-                                savings: fnData.savings || 0
-                            })
-                            .select('id')
-                            .single();
-                        if (fnErr) throw fnErr;
-                        const fortnightId = fnRow.id;
-                        
-                        // Movimientos
-                        if (fnData.movements?.length) {
-                            for (const mv of fnData.movements) {
-                                await supabaseClient.from('movements').insert({
-                                    fortnight_id: fortnightId,
-                                    type: mv.type,
-                                    description: mv.description,
-                                    amount: mv.amount,
-                                    timestamp: new Date(mv.timestamp).toISOString()
-                                });
-                            }
-                            log(`    📝 ${fnData.movements.length} movimientos quincena ${fnNum}`);
+                    .from('finance_data').select('data').eq('id', 'main').maybeSingle();
+                const legacyTableMissing = error && (
+                    error.code === 'PGRST205' ||
+                    /finance_data|schema cache|relation .* does not exist/i.test(error.message || '')
+                );
+                if (error && !legacyTableMissing) throw error;
+                if (legacyTableMissing) {
+                    log('ℹ️ La tabla finance_data no existe; no hay datos legacy que migrar.', 'info');
+                } else if (!oldData?.data) {
+                    log('ℹ️ No hay datos legacy para migrar.', 'info');
+                } else {
+                    const data = oldData.data;
+                    log(`📦 Datos leídos: ${Object.keys(data.months || {}).length} meses`, 'info');
+
+                    for (const [monthKey, monthData] of Object.entries(data.months || {})) {
+                        const [year, month] = monthKey.split('-').map(Number);
+                        if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
+                            stats.skipped++;
+                            log(`⚠️ Mes inválido omitido: ${monthKey}`, 'error');
+                            continue;
                         }
-                    }
-                    
-                    // Categorías y gastos
-                    for (const cat of monthData.categories || []) {
-                        const { data: catRow, error: catErr } = await supabaseClient
-                            .from('categories')
-                            .upsert({ month_id: monthId, name: cat.name })
-                            .select('id')
-                            .single();
-                        if (catErr) throw catErr;
-                        const categoryId = catRow.id;
-                        
+
+                        const { data: monthRows, error: monthError } = await supabaseClient
+                            .from('months').select('id').eq('year', year).eq('month', month).limit(1);
+                        if (monthError) throw monthError;
+                        let monthId = monthRows?.[0]?.id;
+                        if (!monthId) {
+                            const result = await supabaseClient.from('months')
+                                .insert({ year, month }).select('id').single();
+                            if (result.error) throw result.error;
+                            monthId = result.data.id;
+                            stats.months++;
+                        }
+
+                        const fortnightIds = {};
                         for (const fnNum of [1, 2]) {
-                            const fnExpenses = cat.expenses?.[fnNum] || [];
-                            const { data: fnRow } = await supabaseClient
-                                .from('fortnights')
-                                .select('id')
-                                .eq('month_id', monthId)
-                                .eq('fortnight_number', fnNum)
-                                .single();
-                            
-                            for (const exp of fnExpenses) {
-                                await supabaseClient.from('expenses').insert({
-                                    category_id: categoryId,
-                                    fortnight_id: fnRow.id,
-                                    description: exp.description,
-                                    amount: exp.amount,
-                                    expense_date: new Date(exp.id).toISOString() // usar id como timestamp aproximado
-                                });
+                            const fnData = monthData.fortnights?.[fnNum] || {};
+                            const existing = await findOne('fortnights', { month_id: monthId, fortnight_number: fnNum });
+                            if (existing) {
+                                fortnightIds[fnNum] = existing.id;
+                                continue;
+                            }
+                            const result = await supabaseClient.from('fortnights').insert({
+                                month_id: monthId,
+                                fortnight_number: fnNum,
+                                income: Number(fnData.income) || 0,
+                                savings: Number(fnData.savings) || 0
+                            }).select('id').single();
+                            if (result.error) throw result.error;
+                            fortnightIds[fnNum] = result.data.id;
+                            stats.fortnights++;
+                        }
+
+                        for (const cat of monthData.categories || []) {
+                            const categoryName = String(cat.name || '').trim();
+                            if (!categoryName) { stats.skipped++; continue; }
+                            const existing = await supabaseClient.from('categories')
+                                .select('id').eq('month_id', monthId).ilike('name', categoryName).limit(1);
+                            if (existing.error) throw existing.error;
+                            let categoryId = existing.data?.[0]?.id;
+                            if (!categoryId) {
+                                const result = await supabaseClient.from('categories')
+                                    .insert({ month_id: monthId, name: categoryName }).select('id').single();
+                                if (result.error) throw result.error;
+                                categoryId = result.data.id;
+                                stats.categories++;
+                            }
+
+                            for (const fnNum of [1, 2]) {
+                                const expenses = cat.expenses?.[fnNum] || [];
+                                const candidates = [];
+                                for (const expense of expenses) {
+                                    const description = String(expense.description || '').trim();
+                                    const amount = Number(expense.amount);
+                                    if (!description || !Number.isFinite(amount) || amount <= 0) { stats.skipped++; continue; }
+                                    const duplicate = await findOne('expenses', {
+                                        category_id: categoryId,
+                                        fortnight_id: fortnightIds[fnNum],
+                                        description,
+                                        amount
+                                    });
+                                    if (!duplicate) candidates.push({
+                                        category_id: categoryId,
+                                        fortnight_id: fortnightIds[fnNum],
+                                        description,
+                                        amount,
+                                        expense_date: safeIsoDate(expense.date || expense.created_at || expense.id)
+                                    });
+                                }
+                                if (candidates.length) {
+                                    const result = await supabaseClient.from('expenses').insert(candidates);
+                                    if (result.error) throw result.error;
+                                    stats.expenses += candidates.length;
+                                }
                             }
                         }
-                        log(`    📂 Categoría "${cat.name}" con gastos`);
+                    }
+
+                    for (const entry of data.savings?.entries || []) {
+                        const type = entry.type === 'expense' ? 'expense' : 'income';
+                        const amount = Number(entry.amount);
+                        const reason = String(entry.reason || (type === 'income' ? 'Ahorro' : 'Gasto')).trim();
+                        const entryDate = safeIsoDate(entry.date || entry.entry_date);
+                        if (!Number.isFinite(amount) || amount <= 0) { stats.skipped++; continue; }
+                        const duplicate = await findOne('personal_savings', { type, amount, reason, entry_date: entryDate });
+                        if (!duplicate) {
+                            const result = await supabaseClient.from('personal_savings').insert({ type, amount, reason, entry_date: entryDate });
+                            if (result.error) throw result.error;
+                            stats.savings++;
+                        }
                     }
                 }
-                
-                // Migrar ahorros personales
-                if (data.savings?.entries?.length) {
-                    for (const entry of data.savings.entries) {
-                        await supabaseClient.from('personal_savings').insert({
-                            type: entry.type,
-                            amount: entry.amount,
-                            reason: entry.reason,
-                            entry_date: new Date(entry.date).toISOString()
-                        });
-                    }
-                    log(`💰 ${data.savings.entries.length} ahorros personales migrados`, 'success');
-                }
-                
-                log('✅ Migración completada', 'success');
+
+                log(`✅ Migración idempotente: ${stats.months} meses, ${stats.fortnights} quincenas, ${stats.categories} categorías, ${stats.expenses} gastos y ${stats.savings} ahorros nuevos.`, 'success');
+                if (stats.skipped) log(`⚠️ Registros omitidos por datos inválidos: ${stats.skipped}`, 'info');
                 document.getElementById('step3').classList.add('done');
                 document.getElementById('step4').classList.add('active');
                 document.getElementById('drop-btn').disabled = false;
-                setStatus('✅ Migración exitosa. Verifica y elimina tabla antigua.', true);
-                
-            } catch (e) {
-                log('❌ Error en migración: ' + e.message, 'error');
-                setStatus('❌ Error: ' + e.message, false);
+                setStatus('✅ Migración completada. Verifica la app antes de limpiar la tabla antigua.', true);
+            } catch (error) {
+                log('❌ Error en migración: ' + error.message, 'error');
+                setStatus('❌ Error: ' + error.message, false);
             } finally {
-                document.getElementById('migrate-btn').disabled = false;
-                document.getElementById('migrate-btn').textContent = 'Migrar Datos';
+                button.disabled = false;
+                button.textContent = 'Migrar Datos';
             }
         }
 
-        async function dropOldTable() {
-            if (!supabaseClient) await init();
-            if (!confirm('¿Seguro? Esto borra la tabla finance_data permanentemente.')) return;
-            
-            try {
-                const { count: monthsCount } = await supabaseClient.from('months').select('*', { count: 'exact', head: true });
-                const { count: savingsCount } = await supabaseClient.from('personal_savings').select('*', { count: 'exact', head: true });
-                
-                if (!monthsCount && !savingsCount) {
-                    alert('⚠️ No hay datos en las nuevas tablas. No elimines la antigua.');
-                    return;
-                }
-                
-                const { error } = await supabaseClient.from('finance_data').delete().neq('id', '__none__');
-                if (error) throw error;
-                
-                log('✅ Datos de finance_data eliminados', 'success');
-                setStatus('✅ Limpieza completada.', true);
-                
-            } catch (e) {
-                log('❌ Error: ' + e.message, 'error');
-                setStatus('❌ Error: ' + e.message, false);
-            }
+        function dropOldTable() {
+            const sql = 'DROP TABLE IF EXISTS finance_data;';
+            log('La app no ejecuta operaciones destructivas. Ejecuta manualmente en Supabase SQL Editor: ' + sql, 'info');
+            setStatus('La tabla antigua no se ha borrado. Puedes ejecutar DROP TABLE IF EXISTS finance_data; después de verificar los datos.', true);
         }
 
+        document.getElementById('copy-schema-btn').addEventListener('click', () => void copySchema());
+        document.getElementById('verify-schema-btn').addEventListener('click', () => void verifySchema());
+        document.getElementById('migrate-btn').addEventListener('click', () => void migrateData());
+        document.getElementById('drop-btn').addEventListener('click', dropOldTable);
         init();
     </script>
 </body>

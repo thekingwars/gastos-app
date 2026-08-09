@@ -1,16 +1,16 @@
 {
   "name": "mis-finanzas",
   "version": "1.0.0",
-  "description": "App de control de gastos con sincronización",
-  "main": "server.js",
+  "description": "App personal de control de gastos con sincronización Supabase",
+  "private": true,
+  "main": "index.html",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "check": "node --check app.js && node --check src/domain.js && node --check src/repository.js && node --check tests/domain.test.js",
+    "test": "node --test",
+    "start": "open index.html",
+    "dev": "open index.html"
   },
-  "dependencies": {
-    "better-sqlite3": "^11.0.0",
-    "cors": "^2.8.5",
-    "express": "^4.18.2",
-    "qrcode": "^1.5.3"
+  "engines": {
+    "node": ">=18"
   }
 }
