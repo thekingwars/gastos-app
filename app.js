@@ -35,6 +35,8 @@
                 minimumFractionDigits: 2
             });
 
+            this.bindEventsOnce();
+            this.updateTravelSplitPreview('travel');
             this.initSupabase();
         }
 
