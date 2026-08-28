@@ -21,6 +21,7 @@
         constructor(client) {
             this.client = client;
             this.sourceLinkAvailable = null;
+            this.travelAvailable = null;
         }
 
         async run(request, operation) {
@@ -44,6 +45,19 @@
             return error?.code === '42883' || (message.includes('function') && (
                 message.includes('does not exist') || message.includes('could not find') || message.includes('schema cache')
             ));
+        }
+
+        isMissingTable(error, table) {
+            const original = error?.originalError || error;
+            const message = String(original?.message || error?.message || '').toLowerCase();
+            const code = original?.code || error?.code;
+            return code === 'PGRST205' || (
+                message.includes(String(table).toLowerCase()) && (
+                    message.includes('does not exist') ||
+                    message.includes('schema cache') ||
+                    message.includes('could not find the table')
+                )
+            );
         }
 
         async ensureMonth(year, month) {
@@ -354,6 +368,48 @@
             await this.run(
                 this.client.from('personal_savings').delete().eq('id', id),
                 'eliminar movimiento de ahorros'
+            );
+        }
+
+        async listTravelExpenses() {
+            try {
+                const rows = await this.run(
+                    this.client.from('travel_expenses')
+                        .select('id, trip_name, expense_type, amount, people_count, notes, expense_date, created_at, updated_at')
+                        .order('expense_date', { ascending: false }),
+                    'cargar gastos de viaje'
+                );
+                this.travelAvailable = true;
+                return rows || [];
+            } catch (error) {
+                if (this.isMissingTable(error, 'travel_expenses')) {
+                    this.travelAvailable = false;
+                    return [];
+                }
+                throw error;
+            }
+        }
+
+        async createTravelExpense(payload) {
+            await this.run(
+                this.client.from('travel_expenses').insert(payload),
+                'crear gasto de viaje'
+            );
+        }
+
+        async updateTravelExpense(id, payload) {
+            await this.run(
+                this.client.from('travel_expenses')
+                    .update({ ...payload, updated_at: new Date().toISOString() })
+                    .eq('id', id),
+                'actualizar gasto de viaje'
+            );
+        }
+
+        async deleteTravelExpense(id) {
+            await this.run(
+                this.client.from('travel_expenses').delete().eq('id', id),
+                'eliminar gasto de viaje'
             );
         }
     }

@@ -26,6 +26,12 @@ Una aplicación web completa para llevar el control de tus finanzas personales c
 - Los ahorros se restan del ingreso quincenal
 - Acumulación total de ahorros (quincena a quincena y mes a mes)
 
+### ✈️ Viajes (sección autónoma)
+- Registra gastos de viaje sin mezclarlos con el mes, ahorros, historial o comparativas
+- Indica el monto, el tipo de gasto y cuántas personas participan
+- El reparto se calcula automáticamente; por defecto son **2 personas**
+- Agrupa gastos por nombre de viaje y edita o elimina cada registro
+
 ### 📅 Historial Flexible
 - **Vista por Meses**: Resumen mensual completo
 - **Vista por Quincenas**: Detalle de cada quincena individual
@@ -71,6 +77,12 @@ O simplemente haz doble clic en `index.html` desde el Finder.
 2. En la sección de Ahorros, ingresa la cantidad
 3. Haz clic en "Agregar Ahorro"
 4. Este monto se restará de tu ingreso quincenal
+
+### Registrar gastos de viaje
+1. Ve a la pestaña "Viajes"
+2. Escribe el nombre del viaje, el tipo de gasto y el monto
+3. Indica cuántas personas participan (por defecto 2)
+4. El total se reparte automáticamente entre cada quien
 
 ### Ver historial
 - Ve a la pestaña "Historial"
@@ -130,4 +142,4 @@ npm test
 npm run check
 ```
 
-Las pruebas cubren cálculos monetarios, balances, historial, movimientos derivados y escape de texto introducido por el usuario.
+Las pruebas cubren cálculos monetarios, balances, historial, movimientos derivados, escape de texto introducido por el usuario y el reparto autónomo de gastos de viaje.

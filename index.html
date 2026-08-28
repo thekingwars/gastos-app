@@ -14,6 +14,7 @@
                 <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
                 <button class="nav-tab" data-tab="mes-actual">Mes Actual</button>
                 <button class="nav-tab" data-tab="ahorros">Ahorros</button>
+                <button class="nav-tab" data-tab="viajes">Viajes</button>
                 <button class="nav-tab" data-tab="historial">Historial</button>
                 <button class="nav-tab" data-tab="comparativas">Comparativas</button>
             </nav>
@@ -275,6 +276,81 @@
                 </div>
             </section>
 
+            <!-- Viajes (sección autónoma) -->
+            <section id="viajes" class="tab-content">
+                <h2>✈️ Viajes</h2>
+                <p class="info-text">Esta sección es independiente: los gastos de viaje no se mezclan con el mes, ahorros, historial ni comparativas.</p>
+
+                <div id="travel-setup-banner" class="travel-setup-banner hidden">
+                    <strong>Falta crear la tabla de viajes.</strong>
+                    <span> Abre <code>setup.html</code>, copia el SQL actualizado y ejecútalo en el SQL Editor de Supabase.</span>
+                </div>
+
+                <div class="travel-grid">
+                    <div class="card travel-summary-card">
+                        <h3>Resumen de viajes</h3>
+                        <div class="travel-balance-display">
+                            <span class="label">Total gastado</span>
+                            <span id="travel-total" class="travel-total-amount">$0.00</span>
+                        </div>
+                        <div class="savings-stats">
+                            <div class="savings-stat">
+                                <span class="label">Gastos</span>
+                                <span id="travel-count">0</span>
+                            </div>
+                            <div class="savings-stat">
+                                <span class="label">Viajes</span>
+                                <span id="travel-trips-count">0</span>
+                            </div>
+                            <div class="savings-stat">
+                                <span class="label">Reparto por defecto</span>
+                                <span>2 personas</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="card travel-add-card">
+                        <h3>Agregar gasto de viaje</h3>
+                        <label class="field-label" for="travel-trip-name">Nombre del viaje</label>
+                        <input type="text" id="travel-trip-name" placeholder="Ej: Cancún 2026" list="travel-trip-suggestions" autocomplete="off">
+                        <datalist id="travel-trip-suggestions"></datalist>
+
+                        <label class="field-label" for="travel-type">Tipo de gasto</label>
+                        <input type="text" id="travel-type" placeholder="Ej: Comida, Transporte, Alojamiento" list="travel-type-options" autocomplete="off">
+                        <datalist id="travel-type-options"></datalist>
+
+                        <label class="field-label" for="travel-amount">Monto gastado</label>
+                        <input type="number" id="travel-amount" placeholder="Monto" step="0.01" min="0">
+
+                        <label class="field-label" for="travel-people">Personas para repartir</label>
+                        <input type="number" id="travel-people" placeholder="Personas" min="1" step="1" value="2">
+
+                        <label class="field-label" for="travel-notes">Nota (opcional)</label>
+                        <input type="text" id="travel-notes" placeholder="Detalle del gasto">
+
+                        <p id="travel-split-preview" class="travel-split-preview">Con 2 personas, cada quien paga $0.00</p>
+                        <button id="add-travel-expense" class="btn btn-primary" type="button">Agregar gasto</button>
+                    </div>
+
+                    <div class="card travel-types-card">
+                        <h3>Por tipo de gasto</h3>
+                        <div id="travel-by-type" class="travel-by-type">
+                            <p class="empty-state">Aún no hay gastos de viaje</p>
+                        </div>
+                    </div>
+
+                    <div class="card travel-history-card">
+                        <div class="card-header">
+                            <h3>Gastos registrados</h3>
+                        </div>
+                        <div id="travel-trip-filters" class="travel-trip-filters"></div>
+                        <div id="travel-history" class="travel-history-list">
+                            <p class="empty-state">Registra el primer gasto de un viaje</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             <!-- Historial -->
             <section id="historial" class="tab-content">
                 <h2>📅 Historial</h2>
@@ -387,6 +463,30 @@
                 <button id="update-savings" class="btn btn-primary">Actualizar</button>
                 <button id="delete-savings" class="btn btn-danger">Eliminar</button>
                 <button id="cancel-edit-savings" class="btn btn-secondary">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal para editar gasto de viaje -->
+    <div id="edit-travel-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-edit-travel-modal">&times;</span>
+            <h3>Editar gasto de viaje</h3>
+            <label class="field-label" for="edit-travel-trip-name">Nombre del viaje</label>
+            <input type="text" id="edit-travel-trip-name" placeholder="Nombre del viaje">
+            <label class="field-label" for="edit-travel-type">Tipo de gasto</label>
+            <input type="text" id="edit-travel-type" placeholder="Tipo de gasto" list="travel-type-options">
+            <label class="field-label" for="edit-travel-amount">Monto gastado</label>
+            <input type="number" id="edit-travel-amount" placeholder="Monto" step="0.01" min="0">
+            <label class="field-label" for="edit-travel-people">Personas para repartir</label>
+            <input type="number" id="edit-travel-people" placeholder="Personas" min="1" step="1" value="2">
+            <label class="field-label" for="edit-travel-notes">Nota (opcional)</label>
+            <input type="text" id="edit-travel-notes" placeholder="Detalle del gasto">
+            <p id="edit-travel-split-preview" class="travel-split-preview">Con 2 personas, cada quien paga $0.00</p>
+            <div class="modal-actions">
+                <button id="update-travel" class="btn btn-primary" type="button">Actualizar</button>
+                <button id="delete-travel" class="btn btn-danger" type="button">Eliminar</button>
+                <button id="cancel-edit-travel" class="btn btn-secondary" type="button">Cancelar</button>
             </div>
         </div>
     </div>

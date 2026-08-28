@@ -193,15 +193,111 @@
             .replaceAll("'", '&#039;');
     }
 
+    const DEFAULT_TRAVEL_PEOPLE = 2;
+    const TRAVEL_EXPENSE_TYPES = [
+        'Transporte',
+        'Alojamiento',
+        'Comida',
+        'Actividades',
+        'Compras',
+        'Combustible',
+        'Otros'
+    ];
+
+    function parsePeopleCount(value, defaultCount = DEFAULT_TRAVEL_PEOPLE) {
+        if (value === '' || value === null || value === undefined) return defaultCount;
+        const number = typeof value === 'number' ? value : Number.parseInt(String(value), 10);
+        if (!Number.isInteger(number) || number < 1) return null;
+        return number;
+    }
+
+    function splitAmount(amount, peopleCount) {
+        const people = parsePeopleCount(peopleCount);
+        if (people === null) return null;
+        const cents = toCents(amount);
+        if (cents <= 0) return null;
+        return fromCents(Math.round(cents / people));
+    }
+
+    function normalizeTravelExpense(expense) {
+        const peopleCount = parsePeopleCount(expense?.people_count) ?? DEFAULT_TRAVEL_PEOPLE;
+        const amount = fromCents(toCents(expense?.amount));
+        return {
+            ...expense,
+            trip_name: String(expense?.trip_name || 'Viaje').trim() || 'Viaje',
+            expense_type: String(expense?.expense_type || '').trim(),
+            amount,
+            people_count: peopleCount,
+            notes: String(expense?.notes || '').trim(),
+            share: splitAmount(amount, peopleCount)
+        };
+    }
+
+    function computeTravelSummary(expenses) {
+        const items = (expenses || []).map(normalizeTravelExpense);
+        let totalCents = 0;
+        const byTypeCents = {};
+        const byTrip = {};
+
+        items.forEach(item => {
+            const cents = toCents(item.amount);
+            totalCents += cents;
+            byTypeCents[item.expense_type] = (byTypeCents[item.expense_type] || 0) + cents;
+
+            if (!byTrip[item.trip_name]) {
+                byTrip[item.trip_name] = {
+                    name: item.trip_name,
+                    totalCents: 0,
+                    expenses: [],
+                    peopleCounts: new Set()
+                };
+            }
+            const trip = byTrip[item.trip_name];
+            trip.totalCents += cents;
+            trip.expenses.push(item);
+            trip.peopleCounts.add(item.people_count);
+        });
+
+        const trips = Object.values(byTrip).map(trip => {
+            const peopleCounts = [...trip.peopleCounts];
+            const uniformPeople = peopleCounts.length === 1 ? peopleCounts[0] : null;
+            return {
+                name: trip.name,
+                total: fromCents(trip.totalCents),
+                expenses: trip.expenses,
+                peopleCount: uniformPeople,
+                share: uniformPeople ? splitAmount(fromCents(trip.totalCents), uniformPeople) : null
+            };
+        }).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+
+        const byType = Object.entries(byTypeCents)
+            .map(([type, cents]) => ({ type: type || 'Sin tipo', total: fromCents(cents) }))
+            .sort((a, b) => b.total - a.total);
+
+        return {
+            count: items.length,
+            total: fromCents(totalCents),
+            trips,
+            byType,
+            expenses: items
+        };
+    }
+
     return {
         FORTNIGHTS,
+        DEFAULT_TRAVEL_PEOPLE,
+        TRAVEL_EXPENSE_TYPES,
         toNumber,
         parseAmount,
+        parsePeopleCount,
+        splitAmount,
         toCents,
         fromCents,
         sumAmounts,
         normalizeMonthData,
+        normalizeTravelExpense,
         computeMonthSummary,
+        computeTravelSummary,
         buildHistory,
         deriveMovements,
         escapeHtml

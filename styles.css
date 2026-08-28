@@ -567,7 +567,9 @@ input::placeholder {
     padding: 30px;
     border-radius: 16px;
     width: 90%;
-    max-width: 400px;
+    max-width: 440px;
+    max-height: 90vh;
+    overflow-y: auto;
     position: relative;
     animation: modalIn 0.3s ease;
 }
@@ -587,7 +589,7 @@ input::placeholder {
     margin-bottom: 20px;
 }
 
-.close-modal, .close-expense-modal, .close-edit-modal {
+.close-modal, .close-expense-modal, .close-edit-modal, .close-edit-savings-modal, .close-edit-travel-modal {
     position: absolute;
     top: 15px;
     right: 20px;
@@ -596,7 +598,7 @@ input::placeholder {
     color: var(--text-secondary);
 }
 
-.close-modal:hover, .close-expense-modal:hover, .close-edit-modal:hover {
+.close-modal:hover, .close-expense-modal:hover, .close-edit-modal:hover, .close-edit-savings-modal:hover, .close-edit-travel-modal:hover {
     color: var(--text-primary);
 }
 
@@ -1088,5 +1090,210 @@ input::placeholder {
     
     .savings-stats {
         gap: 20px;
+    }
+}
+
+/* ========== Viajes (sección autónoma) ========== */
+.field-label {
+    display: block;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 6px;
+}
+
+.travel-grid {
+    display: grid;
+    grid-template-columns: 1.2fr 1fr;
+    gap: 20px;
+}
+
+.travel-summary-card {
+    grid-column: 1 / -1;
+    text-align: center;
+    background: linear-gradient(135deg, rgba(99, 102, 241, 0.16), rgba(14, 165, 233, 0.1));
+    border: 1px solid rgba(99, 102, 241, 0.35);
+}
+
+.travel-balance-display {
+    margin: 12px 0 20px;
+}
+
+.travel-total-amount {
+    display: block;
+    font-size: 42px;
+    font-weight: 700;
+    color: #a5b4fc;
+}
+
+.travel-add-card,
+.travel-types-card {
+    min-height: 100%;
+}
+
+.travel-split-preview {
+    background: var(--bg-color);
+    border-radius: 8px;
+    padding: 12px 14px;
+    color: var(--success-color);
+    font-weight: 600;
+    margin: 4px 0 12px;
+}
+
+.travel-by-type {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.travel-type-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--bg-color);
+    border-radius: 8px;
+}
+
+.travel-history-card {
+    grid-column: 1 / -1;
+}
+
+.travel-trip-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 16px;
+}
+
+.travel-filter-btn {
+    padding: 8px 14px;
+    border: 2px solid var(--border-color);
+    background: var(--card-bg);
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 999px;
+    font-size: 0.9rem;
+}
+
+.travel-filter-btn.active {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: white;
+}
+
+.travel-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.travel-trip-group {
+    background: var(--bg-color);
+    border-radius: 12px;
+    padding: 16px;
+}
+
+.travel-trip-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+.travel-trip-header h4 {
+    margin: 0 0 4px;
+}
+
+.travel-trip-meta {
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.travel-trip-share {
+    font-weight: 700;
+    color: var(--success-color);
+}
+
+.travel-expense {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    background: rgba(30, 41, 59, 0.7);
+    border-radius: 10px;
+    border-left: 4px solid var(--primary-color);
+    cursor: pointer;
+    margin-bottom: 8px;
+}
+
+.travel-expense:hover {
+    background: rgba(51, 65, 85, 0.9);
+}
+
+.travel-expense-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    flex: 1;
+    min-width: 0;
+}
+
+.travel-expense-type {
+    font-weight: 600;
+}
+
+.travel-expense-meta {
+    font-size: 12px;
+    color: #64748b;
+}
+
+.travel-expense-amounts {
+    text-align: right;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.travel-expense-amount {
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.travel-expense-share {
+    font-size: 12px;
+    color: var(--success-color);
+}
+
+.travel-setup-banner {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fcd34d;
+    padding: 14px 16px;
+    border-radius: 10px;
+    margin-bottom: 20px;
+}
+
+.travel-setup-banner.hidden,
+.hidden {
+    display: none;
+}
+
+@media (max-width: 768px) {
+    .travel-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .travel-summary-card,
+    .travel-history-card {
+        grid-column: span 1;
+    }
+
+    .travel-total-amount {
+        font-size: 32px;
     }
 }
