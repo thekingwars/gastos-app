@@ -27,10 +27,9 @@ Una aplicación web completa para llevar el control de tus finanzas personales c
 - Acumulación total de ahorros (quincena a quincena y mes a mes)
 
 ### ✈️ Viajes (sección autónoma)
-- Registra gastos de viaje sin mezclarlos con el mes, ahorros, historial o comparativas
-- Indica el monto, el tipo de gasto y cuántas personas participan
-- El reparto se calcula automáticamente; por defecto son **2 personas**
-- Agrupa gastos por nombre de viaje y edita o elimina cada registro
+- Crea viajes y conserva un historial de cada uno, aunque todavía no tenga gastos
+- Dentro de cada viaje registra monto, tipo de gasto y personas para el reparto (**2 por defecto**)
+- El cálculo de cuánto paga cada quien es propio de esta sección y no altera el resto de estadísticas
 
 ### 📅 Historial Flexible
 - **Vista por Meses**: Resumen mensual completo
@@ -80,9 +79,9 @@ O simplemente haz doble clic en `index.html` desde el Finder.
 
 ### Registrar gastos de viaje
 1. Ve a la pestaña "Viajes"
-2. Escribe el nombre del viaje, el tipo de gasto y el monto
-3. Indica cuántas personas participan (por defecto 2)
-4. El total se reparte automáticamente entre cada quien
+2. Crea un viaje (nombre, fecha y personas; por defecto 2)
+3. Ábrelo desde el historial e indica tipo de gasto, monto y personas
+4. El total de ese viaje se reparte automáticamente entre cada quien
 
 ### Ver historial
 - Ve a la pestaña "Historial"
