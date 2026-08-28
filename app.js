@@ -21,9 +21,10 @@
             this.monthDataCache = null;
             this.historyCache = null;
             this.personalSavingsCache = [];
+            this.travelTripsCache = [];
             this.travelExpensesCache = [];
             this.travelAvailable = false;
-            this.travelTripFilter = 'all';
+            this.selectedTravelTripId = null;
             this.editingTravelId = null;
             this.charts = { pie: null, trend: null, savings: null };
             this.listenersBound = false;
@@ -66,10 +67,10 @@
                 const travelPromise = this.repository.listTravelExpenses().catch(error => {
                     console.error(error);
                     this.travelAvailable = false;
-                    return [];
+                    return { trips: [], expenses: [] };
                 });
 
-                const [monthData, personalSavings, history, travelExpenses] = await Promise.all([
+                const [monthData, personalSavings, history, travelData] = await Promise.all([
                     this.repository.getMonthData(monthId, fortnightIds),
                     this.repository.listPersonalSavings(),
                     historyPromise,
@@ -82,7 +83,8 @@
                 this.monthDataCache = monthData;
                 this.personalSavingsCache = personalSavings;
                 this.historyCache = history;
-                this.travelExpensesCache = travelExpenses;
+                this.travelTripsCache = travelData?.trips || [];
+                this.travelExpensesCache = travelData?.expenses || [];
                 this.travelAvailable = this.repository.travelAvailable === true;
                 this.bindEventsOnce();
                 this.updateSyncUI('synced');
@@ -138,7 +140,9 @@
             this.updateSyncUI('syncing');
             try {
                 await action();
-                this.travelExpensesCache = await this.repository.listTravelExpenses();
+                const travelData = await this.repository.listTravelExpenses();
+                this.travelTripsCache = travelData?.trips || [];
+                this.travelExpensesCache = travelData?.expenses || [];
                 this.travelAvailable = this.repository.travelAvailable === true;
                 this.renderTravel();
                 if (onSuccess) onSuccess();
@@ -337,12 +341,179 @@
         }
 
         readTravelForm(prefix) {
-            const tripName = document.getElementById(`${prefix}-trip-name`).value.trim() || 'Viaje';
             const expenseType = document.getElementById(`${prefix}-type`).value.trim();
             const amount = Domain.parseAmount(document.getElementById(`${prefix}-amount`).value);
             const peopleCount = Domain.parsePeopleCount(document.getElementById(`${prefix}-people`).value);
             const notes = document.getElementById(`${prefix}-notes`).value.trim();
-            return { tripName, expenseType, amount, peopleCount, notes };
+            return { expenseType, amount, peopleCount, notes };
+        }
+
+        travelSummary() {
+            return Domain.computeTravelSummary({
+                trips: this.travelTripsCache,
+                expenses: this.travelExpensesCache
+            });
+        }
+
+        selectedTravelTrip() {
+            return this.travelSummary().trips.find(trip => String(trip.id) === String(this.selectedTravelTripId)) || null;
+        }
+
+        formatTripDate(value) {
+            if (!value) return 'Sin fecha';
+            const date = new Date(`${value}T00:00:00`);
+            const parsed = Number.isNaN(date.getTime()) ? new Date(value) : date;
+            if (Number.isNaN(parsed.getTime())) return 'Sin fecha';
+            return parsed.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        todayInputDate() {
+            const now = new Date();
+            return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        }
+
+        async createTravelTrip() {
+            if (this.travelAvailable === false) {
+                return this.showValidation('Ejecuta el SQL de setup.html para habilitar la sección de viajes.');
+            }
+            const name = document.getElementById('new-trip-name').value.trim();
+            const peopleCount = Domain.parsePeopleCount(document.getElementById('new-trip-people').value);
+            const notes = document.getElementById('new-trip-notes').value.trim();
+            const tripDate = document.getElementById('new-trip-date').value || this.todayInputDate();
+            if (!name) return this.showValidation('Escribe el nombre del viaje.');
+            if (peopleCount === null) return this.showValidation('La cantidad de personas debe ser un entero mayor a 0.');
+            await this.runTravelAction(
+                async () => {
+                    const id = await this.repository.createTravelTrip({
+                        name,
+                        people_count: peopleCount,
+                        trip_date: tripDate,
+                        notes
+                    });
+                    this.selectedTravelTripId = id;
+                },
+                () => {
+                    document.getElementById('new-trip-name').value = '';
+                    document.getElementById('new-trip-notes').value = '';
+                    document.getElementById('new-trip-people').value = String(Domain.DEFAULT_TRAVEL_PEOPLE);
+                    document.getElementById('new-trip-date').value = this.todayInputDate();
+                }
+            );
+        }
+
+        openTravelTrip(id) {
+            this.selectedTravelTripId = id;
+            this.renderTravel();
+        }
+
+        backToTravelList() {
+            this.selectedTravelTripId = null;
+            this.renderTravel();
+        }
+
+        openTripEditor() {
+            const trip = this.selectedTravelTrip();
+            if (!trip || trip.synthetic) return;
+            document.getElementById('edit-trip-name').value = trip.name;
+            document.getElementById('edit-trip-date').value = trip.trip_date || '';
+            document.getElementById('edit-trip-people').value = trip.peopleCount;
+            document.getElementById('edit-trip-notes').value = trip.notes || '';
+            this.openModal('edit-trip-modal');
+        }
+
+        async updateTravelTrip() {
+            const trip = this.selectedTravelTrip();
+            if (!trip || trip.synthetic) return;
+            const name = document.getElementById('edit-trip-name').value.trim();
+            const peopleCount = Domain.parsePeopleCount(document.getElementById('edit-trip-people').value);
+            const notes = document.getElementById('edit-trip-notes').value.trim();
+            const tripDate = document.getElementById('edit-trip-date').value || null;
+            if (!name) return this.showValidation('Escribe el nombre del viaje.');
+            if (peopleCount === null) return this.showValidation('La cantidad de personas debe ser un entero mayor a 0.');
+            await this.runTravelAction(
+                () => this.repository.updateTravelTrip(trip.id, {
+                    name,
+                    people_count: peopleCount,
+                    trip_date: tripDate,
+                    notes
+                }),
+                () => this.closeModal('edit-trip-modal')
+            );
+        }
+
+        async deleteTravelTrip() {
+            const trip = this.selectedTravelTrip();
+            if (!trip || trip.synthetic) return;
+            if (!window.confirm('¿Eliminar este viaje y todos sus gastos?')) return;
+            await this.runTravelAction(
+                () => this.repository.deleteTravelTrip(trip.id),
+                () => {
+                    this.selectedTravelTripId = null;
+                    this.closeModal('edit-trip-modal');
+                }
+            );
+        }
+
+        async addTravelExpense() {
+            if (this.travelAvailable === false) {
+                return this.showValidation('Ejecuta el SQL de setup.html para habilitar la sección de viajes.');
+            }
+            const trip = this.selectedTravelTrip();
+            if (!trip || trip.synthetic) {
+                return this.showValidation('Abre un viaje del historial para registrar sus gastos.');
+            }
+            const { expenseType, amount, peopleCount, notes } = this.readTravelForm('travel');
+            if (!expenseType) return this.showValidation('Indica el tipo de gasto.');
+            if (amount === null || amount <= 0) return this.showValidation('Ingresa un monto válido.');
+            if (peopleCount === null) return this.showValidation('La cantidad de personas debe ser un entero mayor a 0.');
+            await this.runTravelAction(
+                () => this.repository.createTravelExpense({
+                    trip_id: trip.id,
+                    trip_name: trip.name,
+                    expense_type: expenseType,
+                    amount,
+                    people_count: peopleCount,
+                    notes,
+                    expense_date: new Date().toISOString()
+                }),
+                () => {
+                    document.getElementById('travel-amount').value = '';
+                    document.getElementById('travel-notes').value = '';
+                    document.getElementById('travel-people').value = String(trip.peopleCount || Domain.DEFAULT_TRAVEL_PEOPLE);
+                    this.updateTravelSplitPreview('travel');
+                }
+            );
+        }
+
+        openTravelEditor(id) {
+            const expense = this.travelExpensesCache.find(item => item.id === id);
+            if (!expense) return;
+            const normalized = Domain.normalizeTravelExpense(expense);
+            this.editingTravelId = id;
+            document.getElementById('edit-travel-type').value = normalized.expense_type;
+            document.getElementById('edit-travel-amount').value = normalized.amount;
+            document.getElementById('edit-travel-people').value = normalized.people_count;
+            document.getElementById('edit-travel-notes').value = normalized.notes;
+            this.updateTravelSplitPreview('edit-travel');
+            this.openModal('edit-travel-modal');
+        }
+
+        async updateTravelExpense() {
+            const { expenseType, amount, peopleCount, notes } = this.readTravelForm('edit-travel');
+            if (!expenseType) return this.showValidation('Indica el tipo de gasto.');
+            if (amount === null || amount <= 0) return this.showValidation('Ingresa un monto válido.');
+            if (peopleCount === null) return this.showValidation('La cantidad de personas debe ser un entero mayor a 0.');
+            const current = this.travelExpensesCache.find(item => item.id === this.editingTravelId);
+            await this.runTravelAction(
+                () => this.repository.updateTravelExpense(this.editingTravelId, {
+                    trip_name: current?.trip_name,
+                    expense_type: expenseType,
+                    amount,
+                    people_count: peopleCount,
+                    notes
+                }),
+                () => this.closeModal('edit-travel-modal')
+            );
         }
 
         updateTravelSplitPreview(prefix) {
@@ -360,63 +531,6 @@
             }
             const share = Domain.splitAmount(amount, peopleCount);
             preview.textContent = `Se reparte entre ${peopleCount}: ${this.formatCurrency(share)} cada quien`;
-        }
-
-        async addTravelExpense() {
-            if (this.travelAvailable === false) {
-                return this.showValidation('Ejecuta el SQL de setup.html para habilitar la sección de viajes.');
-            }
-            const { tripName, expenseType, amount, peopleCount, notes } = this.readTravelForm('travel');
-            if (!expenseType) return this.showValidation('Indica el tipo de gasto.');
-            if (amount === null || amount <= 0) return this.showValidation('Ingresa un monto válido.');
-            if (peopleCount === null) return this.showValidation('La cantidad de personas debe ser un entero mayor a 0.');
-            await this.runTravelAction(
-                () => this.repository.createTravelExpense({
-                    trip_name: tripName,
-                    expense_type: expenseType,
-                    amount,
-                    people_count: peopleCount,
-                    notes,
-                    expense_date: new Date().toISOString()
-                }),
-                () => {
-                    document.getElementById('travel-amount').value = '';
-                    document.getElementById('travel-notes').value = '';
-                    document.getElementById('travel-people').value = String(Domain.DEFAULT_TRAVEL_PEOPLE);
-                    this.updateTravelSplitPreview('travel');
-                }
-            );
-        }
-
-        openTravelEditor(id) {
-            const expense = this.travelExpensesCache.find(item => item.id === id);
-            if (!expense) return;
-            const normalized = Domain.normalizeTravelExpense(expense);
-            this.editingTravelId = id;
-            document.getElementById('edit-travel-trip-name').value = normalized.trip_name;
-            document.getElementById('edit-travel-type').value = normalized.expense_type;
-            document.getElementById('edit-travel-amount').value = normalized.amount;
-            document.getElementById('edit-travel-people').value = normalized.people_count;
-            document.getElementById('edit-travel-notes').value = normalized.notes;
-            this.updateTravelSplitPreview('edit-travel');
-            this.openModal('edit-travel-modal');
-        }
-
-        async updateTravelExpense() {
-            const { tripName, expenseType, amount, peopleCount, notes } = this.readTravelForm('edit-travel');
-            if (!expenseType) return this.showValidation('Indica el tipo de gasto.');
-            if (amount === null || amount <= 0) return this.showValidation('Ingresa un monto válido.');
-            if (peopleCount === null) return this.showValidation('La cantidad de personas debe ser un entero mayor a 0.');
-            await this.runTravelAction(
-                () => this.repository.updateTravelExpense(this.editingTravelId, {
-                    trip_name: tripName,
-                    expense_type: expenseType,
-                    amount,
-                    people_count: peopleCount,
-                    notes
-                }),
-                () => this.closeModal('edit-travel-modal')
-            );
         }
 
         async deleteTravelExpense() {
@@ -546,17 +660,13 @@
                     .join('');
             }
 
-            const summary = Domain.computeTravelSummary(this.travelExpensesCache);
+            const dateInput = document.getElementById('new-trip-date');
+            if (dateInput && !dateInput.value) dateInput.value = this.todayInputDate();
+
+            const summary = this.travelSummary();
             document.getElementById('travel-total').textContent = this.formatCurrency(summary.total);
             document.getElementById('travel-count').textContent = String(summary.count);
             document.getElementById('travel-trips-count').textContent = String(summary.trips.length);
-
-            const tripSuggestions = document.getElementById('travel-trip-suggestions');
-            if (tripSuggestions) {
-                tripSuggestions.innerHTML = summary.trips
-                    .map(trip => `<option value="${Domain.escapeHtml(trip.name)}"></option>`)
-                    .join('');
-            }
 
             const typeContainer = document.getElementById('travel-by-type');
             if (!summary.byType.length) {
@@ -567,30 +677,66 @@
                 )).join('');
             }
 
-            const filters = document.getElementById('travel-trip-filters');
-            const filterNames = ['all', ...summary.trips.map(trip => trip.name)];
-            if (!filterNames.includes(this.travelTripFilter)) this.travelTripFilter = 'all';
-            filters.innerHTML = filterNames.map(name => {
-                const label = name === 'all' ? 'Todos' : name;
-                const active = this.travelTripFilter === name ? ' active' : '';
-                return `<button class="travel-filter-btn${active}" type="button" data-action="filter-trip" data-id="${Domain.escapeHtml(name)}">${Domain.escapeHtml(label)}</button>`;
-            }).join('');
+            const list = document.getElementById('travel-trip-list');
+            if (!summary.trips.length) {
+                list.innerHTML = '<p class="empty-state">Crea un viaje para empezar el historial</p>';
+            } else {
+                list.innerHTML = summary.trips.map(trip => {
+                    const shareText = trip.share === null
+                        ? 'Cada gasto se reparte con su propia cantidad de personas'
+                        : `${this.formatCurrency(trip.share)} cada quien`;
+                        const peopleLabel = trip.peopleCount
+                            ? `${trip.peopleCount} persona${trip.peopleCount === 1 ? '' : 's'}`
+                            : 'Personas variables';
+                    const emptyClass = trip.expenses.length ? '' : ' travel-trip-card-empty';
+                    const note = trip.notes ? `<div class="travel-trip-meta">${Domain.escapeHtml(trip.notes)}</div>` : '';
+                    return `<div class="travel-trip-card${emptyClass}" data-action="open-trip" data-id="${Domain.escapeHtml(String(trip.id))}" tabindex="0" role="button">
+                        <h4>${Domain.escapeHtml(trip.name)}</h4>
+                        <div class="travel-trip-meta">${Domain.escapeHtml(this.formatTripDate(trip.trip_date || trip.created_at))} · ${Domain.escapeHtml(peopleLabel)}</div>
+                        ${note}
+                        <div class="travel-trip-meta">${trip.expenses.length} gasto${trip.expenses.length === 1 ? '' : 's'} · Total ${this.formatCurrency(trip.total)}</div>
+                        <div class="travel-trip-share">${Domain.escapeHtml(shareText)}</div>
+                    </div>`;
+                }).join('');
+            }
 
-            const visibleTrips = this.travelTripFilter === 'all'
-                ? summary.trips
-                : summary.trips.filter(trip => trip.name === this.travelTripFilter);
-            const history = document.getElementById('travel-history');
-            if (!visibleTrips.length) {
-                history.innerHTML = '<p class="empty-state">Registra el primer gasto de un viaje</p>';
+            const selected = this.selectedTravelTrip();
+            document.getElementById('travel-list-view').classList.toggle('hidden', Boolean(selected));
+            document.getElementById('travel-detail-view').classList.toggle('hidden', !selected);
+            if (!selected) {
                 this.updateTravelSplitPreview('travel');
                 return;
             }
 
-            history.innerHTML = visibleTrips.map(trip => {
-                const shareText = trip.share !== null
-                    ? `${this.formatCurrency(trip.share)} cada quien (${trip.peopleCount} personas)`
-                    : 'Cada gasto se reparte con su propia cantidad de personas';
-                const expenses = trip.expenses.map(expense => {
+            document.getElementById('travel-detail-name').textContent = selected.name;
+            document.getElementById('travel-detail-meta').textContent = `${this.formatTripDate(selected.trip_date || selected.created_at)} · ${selected.expenses.length} gasto${selected.expenses.length === 1 ? '' : 's'} · Total ${this.formatCurrency(selected.total)}`;
+            document.getElementById('travel-detail-share').textContent = selected.share === null
+                ? 'Cada gasto se reparte aparte'
+                : `${this.formatCurrency(selected.share)} cada quien (${selected.peopleCount || Domain.DEFAULT_TRAVEL_PEOPLE} personas)`;
+
+            const canManageTrip = !selected.synthetic;
+            document.getElementById('edit-travel-trip').classList.toggle('hidden', !canManageTrip);
+            document.getElementById('delete-travel-trip').classList.toggle('hidden', !canManageTrip);
+
+            const peopleInput = document.getElementById('travel-people');
+            if (peopleInput && document.activeElement !== peopleInput) {
+                peopleInput.value = String(selected.peopleCount || Domain.DEFAULT_TRAVEL_PEOPLE);
+            }
+
+            const detailTypes = document.getElementById('travel-detail-by-type');
+            if (!selected.byType.length) {
+                detailTypes.innerHTML = '<p class="empty-state">Este viaje todavía no tiene gastos</p>';
+            } else {
+                detailTypes.innerHTML = selected.byType.map(item => (
+                    `<div class="travel-type-row"><span>${Domain.escapeHtml(item.type)}</span><span>${this.formatCurrency(item.total)}</span></div>`
+                )).join('');
+            }
+
+            const history = document.getElementById('travel-history');
+            if (!selected.expenses.length) {
+                history.innerHTML = '<p class="empty-state">Agrega el primer gasto de este viaje</p>';
+            } else {
+                history.innerHTML = selected.expenses.map(expense => {
                     const date = new Date(expense.expense_date || expense.created_at);
                     const dateText = Number.isNaN(date.getTime())
                         ? 'Fecha no disponible'
@@ -607,17 +753,7 @@
                         </div>
                     </div>`;
                 }).join('');
-                return `<div class="travel-trip-group">
-                    <div class="travel-trip-header">
-                        <div>
-                            <h4>${Domain.escapeHtml(trip.name)}</h4>
-                            <div class="travel-trip-meta">${trip.expenses.length} gasto${trip.expenses.length === 1 ? '' : 's'} · Total ${this.formatCurrency(trip.total)}</div>
-                        </div>
-                        <div class="travel-trip-share">${Domain.escapeHtml(shareText)}</div>
-                    </div>
-                    ${expenses}
-                </div>`;
-            }).join('');
+            }
             this.updateTravelSplitPreview('travel');
         }
 
@@ -847,6 +983,12 @@
             document.getElementById('delete-savings').addEventListener('click', () => void this.deleteSavingsEntry());
             document.getElementById('cancel-edit-savings').addEventListener('click', () => this.closeModal('edit-savings-modal'));
             document.getElementById('add-travel-expense').addEventListener('click', () => void this.addTravelExpense());
+            document.getElementById('create-travel-trip').addEventListener('click', () => void this.createTravelTrip());
+            document.getElementById('travel-back').addEventListener('click', () => this.backToTravelList());
+            document.getElementById('edit-travel-trip').addEventListener('click', () => this.openTripEditor());
+            document.getElementById('delete-travel-trip').addEventListener('click', () => void this.deleteTravelTrip());
+            document.getElementById('update-trip').addEventListener('click', () => void this.updateTravelTrip());
+            document.getElementById('cancel-edit-trip').addEventListener('click', () => this.closeModal('edit-trip-modal'));
             document.getElementById('update-travel').addEventListener('click', () => void this.updateTravelExpense());
             document.getElementById('delete-travel').addEventListener('click', () => void this.deleteTravelExpense());
             document.getElementById('cancel-edit-travel').addEventListener('click', () => this.closeModal('edit-travel-modal'));
@@ -856,7 +998,7 @@
             ['edit-travel-amount', 'edit-travel-people'].forEach(id => {
                 document.getElementById(id).addEventListener('input', () => this.updateTravelSplitPreview('edit-travel'));
             });
-            document.querySelectorAll('.modal .close-modal, .modal .close-expense-modal, .modal .close-edit-modal, .modal .close-edit-savings-modal, .modal .close-edit-travel-modal').forEach(button => button.addEventListener('click', () => this.closeModal(button.closest('.modal').id)));
+            document.querySelectorAll('.modal .close-modal, .modal .close-expense-modal, .modal .close-edit-modal, .modal .close-edit-savings-modal, .modal .close-edit-travel-modal, .modal .close-edit-trip-modal').forEach(button => button.addEventListener('click', () => this.closeModal(button.closest('.modal').id)));
             document.querySelectorAll('.filter-btn').forEach(button => button.addEventListener('click', () => {
                 document.querySelectorAll('.filter-btn').forEach(item => item.classList.toggle('active', item === button));
                 this.historyFilter = button.dataset.filter;
@@ -881,7 +1023,10 @@
                     'travel-amount': () => this.addTravelExpense(),
                     'travel-people': () => this.addTravelExpense(),
                     'travel-notes': () => this.addTravelExpense(),
-                    'travel-type': () => this.addTravelExpense()
+                    'travel-type': () => this.addTravelExpense(),
+                    'new-trip-name': () => this.createTravelTrip(),
+                    'new-trip-people': () => this.createTravelTrip(),
+                    'new-trip-notes': () => this.createTravelTrip()
                 }[input.id];
                 if (action) { event.preventDefault(); void action(); }
             }));
@@ -904,11 +1049,9 @@
                     this.openSavingsEditor(target.dataset.id);
                 }
             });
-            document.getElementById('travel-trip-filters').addEventListener('click', event => {
-                const target = event.target.closest('[data-action="filter-trip"]');
-                if (!target) return;
-                this.travelTripFilter = target.dataset.id;
-                this.renderTravel();
+            document.getElementById('travel-trip-list').addEventListener('click', event => {
+                const target = event.target.closest('[data-action="open-trip"]');
+                if (target) this.openTravelTrip(target.dataset.id);
             });
             document.getElementById('travel-history').addEventListener('click', event => {
                 const target = event.target.closest('[data-action="edit-travel"]');

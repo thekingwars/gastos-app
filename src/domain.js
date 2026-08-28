@@ -219,11 +219,22 @@
         return fromCents(Math.round(cents / people));
     }
 
+    function normalizeTravelTrip(trip) {
+        return {
+            ...trip,
+            name: String(trip?.name || 'Viaje').trim() || 'Viaje',
+            people_count: parsePeopleCount(trip?.people_count) ?? DEFAULT_TRAVEL_PEOPLE,
+            notes: String(trip?.notes || '').trim(),
+            trip_date: trip?.trip_date || null
+        };
+    }
+
     function normalizeTravelExpense(expense) {
         const peopleCount = parsePeopleCount(expense?.people_count) ?? DEFAULT_TRAVEL_PEOPLE;
         const amount = fromCents(toCents(expense?.amount));
         return {
             ...expense,
+            trip_id: expense?.trip_id || null,
             trip_name: String(expense?.trip_name || 'Viaje').trim() || 'Viaje',
             expense_type: String(expense?.expense_type || '').trim(),
             amount,
@@ -233,52 +244,110 @@
         };
     }
 
-    function computeTravelSummary(expenses) {
+    function tripTimestamp(trip) {
+        const raw = trip?.trip_date || trip?.created_at || '';
+        const date = new Date(raw);
+        return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+    }
+
+    function summarizeTripExpenses(expenses, peopleCount) {
+        const items = expenses || [];
+        const total = fromCents(items.reduce((sum, item) => sum + toCents(item.amount), 0));
+        const byTypeCents = {};
+        items.forEach(item => {
+            byTypeCents[item.expense_type] = (byTypeCents[item.expense_type] || 0) + toCents(item.amount);
+        });
+        const peopleCounts = [...new Set(items.map(item => item.people_count))];
+        const uniformPeople = peopleCount ?? (peopleCounts.length === 1 ? peopleCounts[0] : null);
+        return {
+            total,
+            share: uniformPeople && total > 0 ? splitAmount(total, uniformPeople) : (total === 0 ? 0 : null),
+            peopleCount: peopleCount ?? uniformPeople,
+            byType: Object.entries(byTypeCents)
+                .map(([type, cents]) => ({ type: type || 'Sin tipo', total: fromCents(cents) }))
+                .sort((a, b) => b.total - a.total)
+        };
+    }
+
+    function computeTravelSummary({ trips = [], expenses = [] } = {}) {
         const items = (expenses || []).map(normalizeTravelExpense);
+        const tripRecords = (trips || []).map(normalizeTravelTrip);
+        const buckets = new Map(tripRecords.map(trip => [String(trip.id), {
+            ...trip,
+            expenses: [],
+            totalCents: 0
+        }]));
+
         let totalCents = 0;
         const byTypeCents = {};
-        const byTrip = {};
+        const orphans = [];
 
         items.forEach(item => {
             const cents = toCents(item.amount);
             totalCents += cents;
             byTypeCents[item.expense_type] = (byTypeCents[item.expense_type] || 0) + cents;
-
-            if (!byTrip[item.trip_name]) {
-                byTrip[item.trip_name] = {
-                    name: item.trip_name,
-                    totalCents: 0,
-                    expenses: [],
-                    peopleCounts: new Set()
-                };
+            const bucket = item.trip_id ? buckets.get(String(item.trip_id)) : null;
+            if (bucket) {
+                bucket.expenses.push(item);
+                bucket.totalCents += cents;
+            } else {
+                orphans.push(item);
             }
-            const trip = byTrip[item.trip_name];
-            trip.totalCents += cents;
-            trip.expenses.push(item);
-            trip.peopleCounts.add(item.people_count);
         });
 
-        const trips = Object.values(byTrip).map(trip => {
-            const peopleCounts = [...trip.peopleCounts];
-            const uniformPeople = peopleCounts.length === 1 ? peopleCounts[0] : null;
+        const officialTrips = [...buckets.values()].map(trip => {
+            const stats = summarizeTripExpenses(trip.expenses, trip.people_count);
             return {
+                id: trip.id,
                 name: trip.name,
-                total: fromCents(trip.totalCents),
+                notes: trip.notes,
+                trip_date: trip.trip_date,
+                created_at: trip.created_at,
+                peopleCount: trip.people_count,
+                total: stats.total,
+                share: stats.share,
+                byType: stats.byType,
                 expenses: trip.expenses,
-                peopleCount: uniformPeople,
-                share: uniformPeople ? splitAmount(fromCents(trip.totalCents), uniformPeople) : null
+                synthetic: false
             };
-        }).sort((a, b) => a.name.localeCompare(b.name, 'es'));
+        });
 
-        const byType = Object.entries(byTypeCents)
-            .map(([type, cents]) => ({ type: type || 'Sin tipo', total: fromCents(cents) }))
-            .sort((a, b) => b.total - a.total);
+        const orphanGroups = {};
+        orphans.forEach(item => {
+            const key = item.trip_name || 'Viaje';
+            if (!orphanGroups[key]) {
+                orphanGroups[key] = { name: key, expenses: [] };
+            }
+            orphanGroups[key].expenses.push(item);
+        });
+
+        const syntheticTrips = Object.values(orphanGroups).map(group => {
+            const stats = summarizeTripExpenses(group.expenses);
+            return {
+                id: `legacy:${group.name}`,
+                name: group.name,
+                notes: '',
+                trip_date: null,
+                created_at: group.expenses[0]?.expense_date || group.expenses[0]?.created_at || null,
+                peopleCount: stats.peopleCount,
+                total: stats.total,
+                share: stats.share,
+                byType: stats.byType,
+                expenses: group.expenses,
+                synthetic: true
+            };
+        });
+
+        const tripSummaries = [...officialTrips, ...syntheticTrips]
+            .sort((a, b) => tripTimestamp(b) - tripTimestamp(a) || String(b.name).localeCompare(String(a.name), 'es'));
 
         return {
             count: items.length,
             total: fromCents(totalCents),
-            trips,
-            byType,
+            trips: tripSummaries,
+            byType: Object.entries(byTypeCents)
+                .map(([type, cents]) => ({ type: type || 'Sin tipo', total: fromCents(cents) }))
+                .sort((a, b) => b.total - a.total),
             expenses: items
         };
     }
@@ -295,6 +364,7 @@
         fromCents,
         sumAmounts,
         normalizeMonthData,
+        normalizeTravelTrip,
         normalizeTravelExpense,
         computeMonthSummary,
         computeTravelSummary,

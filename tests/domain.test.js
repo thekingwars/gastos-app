@@ -86,15 +86,22 @@ test('reparte un gasto de viaje entre 2 personas por defecto', () => {
 });
 
 test('resume viajes de forma autónoma y no altera el resumen mensual', () => {
-    const travel = Domain.computeTravelSummary([
-        { trip_name: 'Cancún', expense_type: 'Comida', amount: '80.50', people_count: 2 },
-        { trip_name: 'Cancún', expense_type: 'Transporte', amount: 40, people_count: '' },
-        { trip_name: 'Oaxaca', expense_type: 'Alojamiento', amount: 300, people_count: 3 }
-    ]);
+    const travel = Domain.computeTravelSummary({
+        trips: [
+            { id: 'cancun', name: 'Cancún', people_count: 2, trip_date: '2026-08-10' },
+            { id: 'oaxaca', name: 'Oaxaca', people_count: 3, trip_date: '2026-07-01' }
+        ],
+        expenses: [
+            { trip_id: 'cancun', trip_name: 'Cancún', expense_type: 'Comida', amount: '80.50', people_count: 2 },
+            { trip_id: 'cancun', trip_name: 'Cancún', expense_type: 'Transporte', amount: 40, people_count: '' },
+            { trip_id: 'oaxaca', trip_name: 'Oaxaca', expense_type: 'Alojamiento', amount: 300, people_count: 3 }
+        ]
+    });
 
     assert.equal(travel.count, 3);
     assert.equal(travel.total, 420.5);
     assert.equal(travel.trips.length, 2);
+    assert.equal(travel.trips[0].name, 'Cancún');
     const cancun = travel.trips.find(trip => trip.name === 'Cancún');
     assert.equal(cancun.total, 120.5);
     assert.equal(cancun.peopleCount, 2);
@@ -103,10 +110,12 @@ test('resume viajes de forma autónoma y no altera el resumen mensual', () => {
     assert.equal(oaxaca.peopleCount, 3);
     assert.equal(oaxaca.share, 100);
 
-    const mixed = Domain.computeTravelSummary([
-        { trip_name: 'Mixto', expense_type: 'Comida', amount: 100, people_count: 2 },
-        { trip_name: 'Mixto', expense_type: 'Transporte', amount: 90, people_count: 3 }
-    ]);
+    const mixed = Domain.computeTravelSummary({
+        expenses: [
+            { trip_name: 'Mixto', expense_type: 'Comida', amount: 100, people_count: 2 },
+            { trip_name: 'Mixto', expense_type: 'Transporte', amount: 90, people_count: 3 }
+        ]
+    });
     assert.equal(mixed.trips[0].peopleCount, null);
     assert.equal(mixed.trips[0].share, null);
     assert.equal(mixed.trips[0].expenses[0].share, 50);
@@ -119,4 +128,23 @@ test('resume viajes de forma autónoma y no altera el resumen mensual', () => {
     });
     assert.equal(month.totalExpenses, 100);
     assert.equal(month.totalBalance, 350);
+});
+
+test('conserva en el historial los viajes creados aunque no tengan gastos', () => {
+    const travel = Domain.computeTravelSummary({
+        trips: [
+            { id: 't1', name: 'Playa', people_count: 2, trip_date: '2026-08-20' },
+            { id: 't2', name: 'Montaña', people_count: 4, trip_date: '2026-01-05' }
+        ],
+        expenses: [
+            { trip_id: 't2', expense_type: 'Comida', amount: 80, people_count: 4 }
+        ]
+    });
+
+    assert.equal(travel.trips.length, 2);
+    assert.equal(travel.trips[0].name, 'Playa');
+    assert.equal(travel.trips[0].total, 0);
+    assert.equal(travel.trips[0].expenses.length, 0);
+    assert.equal(travel.trips[1].name, 'Montaña');
+    assert.equal(travel.trips[1].share, 20);
 });

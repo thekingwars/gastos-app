@@ -373,21 +373,64 @@
 
         async listTravelExpenses() {
             try {
-                const rows = await this.run(
-                    this.client.from('travel_expenses')
-                        .select('id, trip_name, expense_type, amount, people_count, notes, expense_date, created_at, updated_at')
-                        .order('expense_date', { ascending: false }),
-                    'cargar gastos de viaje'
-                );
+                const [trips, expenses] = await Promise.all([
+                    this.run(
+                        this.client.from('travel_trips')
+                            .select('id, name, people_count, trip_date, notes, created_at, updated_at')
+                            .order('created_at', { ascending: false }),
+                        'cargar viajes'
+                    ),
+                    this.run(
+                        this.client.from('travel_expenses')
+                            .select('id, trip_id, trip_name, expense_type, amount, people_count, notes, expense_date, created_at, updated_at')
+                            .order('expense_date', { ascending: false }),
+                        'cargar gastos de viaje'
+                    ).catch(error => {
+                        if (this.isMissingTable(error, 'travel_expenses')) return [];
+                        if (this.isMissingColumn(error, 'trip_id')) {
+                            return this.run(
+                                this.client.from('travel_expenses')
+                                    .select('id, trip_name, expense_type, amount, people_count, notes, expense_date, created_at, updated_at')
+                                    .order('expense_date', { ascending: false }),
+                                'cargar gastos de viaje compatibles'
+                            );
+                        }
+                        throw error;
+                    })
+                ]);
                 this.travelAvailable = true;
-                return rows || [];
+                return { trips: trips || [], expenses: expenses || [] };
             } catch (error) {
-                if (this.isMissingTable(error, 'travel_expenses')) {
+                if (this.isMissingTable(error, 'travel_trips') || this.isMissingTable(error, 'travel_expenses')) {
                     this.travelAvailable = false;
-                    return [];
+                    return { trips: [], expenses: [] };
                 }
                 throw error;
             }
+        }
+
+        async createTravelTrip(payload) {
+            const inserted = await this.run(
+                this.client.from('travel_trips').insert(payload).select('id').single(),
+                'crear viaje'
+            );
+            return inserted?.id || null;
+        }
+
+        async updateTravelTrip(id, payload) {
+            await this.run(
+                this.client.from('travel_trips')
+                    .update({ ...payload, updated_at: new Date().toISOString() })
+                    .eq('id', id),
+                'actualizar viaje'
+            );
+        }
+
+        async deleteTravelTrip(id) {
+            await this.run(
+                this.client.from('travel_trips').delete().eq('id', id),
+                'eliminar viaje'
+            );
         }
 
         async createTravelExpense(payload) {

@@ -589,7 +589,7 @@ input::placeholder {
     margin-bottom: 20px;
 }
 
-.close-modal, .close-expense-modal, .close-edit-modal, .close-edit-savings-modal, .close-edit-travel-modal {
+.close-modal, .close-expense-modal, .close-edit-modal, .close-edit-savings-modal, .close-edit-travel-modal, .close-edit-trip-modal {
     position: absolute;
     top: 15px;
     right: 20px;
@@ -598,7 +598,7 @@ input::placeholder {
     color: var(--text-secondary);
 }
 
-.close-modal:hover, .close-expense-modal:hover, .close-edit-modal:hover, .close-edit-savings-modal:hover, .close-edit-travel-modal:hover {
+.close-modal:hover, .close-expense-modal:hover, .close-edit-modal:hover, .close-edit-savings-modal:hover, .close-edit-travel-modal:hover, .close-edit-trip-modal:hover {
     color: var(--text-primary);
 }
 
@@ -1160,6 +1160,62 @@ input::placeholder {
     grid-column: 1 / -1;
 }
 
+.travel-trip-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.travel-trip-cards > .empty-state {
+    grid-column: 1 / -1;
+}
+
+.travel-trip-card {
+    background: var(--bg-color);
+    border-radius: 12px;
+    padding: 18px;
+    border-left: 4px solid var(--primary-color);
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.travel-trip-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 16px rgba(0, 0, 0, 0.35);
+}
+
+.travel-trip-card h4 {
+    margin: 0 0 6px;
+}
+
+.travel-trip-card-empty {
+    border-left-color: var(--text-secondary);
+}
+
+.travel-back-btn {
+    margin-bottom: 16px;
+}
+
+.travel-detail-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+}
+
+.travel-detail-header h3 {
+    margin-bottom: 6px;
+}
+
+.travel-detail-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+
 .travel-trip-filters {
     display: flex;
     flex-wrap: wrap;
@@ -1295,5 +1351,11 @@ input::placeholder {
 
     .travel-total-amount {
         font-size: 32px;
+    }
+
+    .travel-detail-header,
+    .travel-detail-actions {
+        flex-direction: column;
+        align-items: stretch;
     }
 }

@@ -38,7 +38,7 @@
 
     <div class="step" id="step1">
         <h2>Paso 1: Ejecutar Schema SQL</h2>
-        <p>Copia y ejecuta este SQL en <strong>SQL Editor</strong> de Supabase. Si ya tenías el esquema, vuelve a ejecutarlo: es idempotente e incluye la tabla autónoma <code>travel_expenses</code>.</p>
+        <p>Copia y ejecuta este SQL en <strong>SQL Editor</strong> de Supabase. Si ya tenías el esquema, vuelve a ejecutarlo: es idempotente e incluye las tablas autónomas <code>travel_trips</code> y <code>travel_expenses</code>.</p>
         <pre><code id="schema-sql">-- ============================================
 -- ESQUEMA NORMALIZADO - MIS FINANZAS
 -- ============================================
@@ -170,9 +170,20 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.set_savings_and_sync(UUID, NUMERIC, TEXT) TO anon, authenticated;
 
--- 7. GASTOS DE VIAJE (sección 100% autónoma)
+-- 7. VIAJES (sección 100% autónoma, con historial por viaje)
+CREATE TABLE IF NOT EXISTS travel_trips (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL,
+    people_count INT NOT NULL DEFAULT 2 CHECK (people_count >= 1),
+    trip_date DATE,
+    notes TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS travel_expenses (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    trip_id UUID REFERENCES travel_trips(id) ON DELETE CASCADE,
     trip_name TEXT NOT NULL DEFAULT 'Viaje',
     expense_type TEXT NOT NULL,
     amount NUMERIC(12,2) NOT NULL CHECK (amount > 0),
@@ -183,8 +194,12 @@ CREATE TABLE IF NOT EXISTS travel_expenses (
     updated_at TIMESTAMPTZ DEFAULT now()
 );
 
+ALTER TABLE travel_expenses ADD COLUMN IF NOT EXISTS trip_id UUID REFERENCES travel_trips(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_travel_trips_date ON travel_trips(trip_date DESC, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_travel_expenses_date ON travel_expenses(expense_date DESC);
 CREATE INDEX IF NOT EXISTS idx_travel_expenses_trip ON travel_expenses(lower(trim(trip_name)));
+CREATE INDEX IF NOT EXISTS idx_travel_expenses_trip_id ON travel_expenses(trip_id);
 
 -- RLS POLICIES (permitir todo con anon key)
 ALTER TABLE months ENABLE ROW LEVEL SECURITY;
@@ -193,6 +208,7 @@ ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE movements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE personal_savings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE travel_trips ENABLE ROW LEVEL SECURITY;
 ALTER TABLE travel_expenses ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "allow_all" ON months;
@@ -201,6 +217,7 @@ DROP POLICY IF EXISTS "allow_all" ON categories;
 DROP POLICY IF EXISTS "allow_all" ON expenses;
 DROP POLICY IF EXISTS "allow_all" ON movements;
 DROP POLICY IF EXISTS "allow_all" ON personal_savings;
+DROP POLICY IF EXISTS "allow_all" ON travel_trips;
 DROP POLICY IF EXISTS "allow_all" ON travel_expenses;
 
 CREATE POLICY "allow_all" ON months FOR ALL USING (true) WITH CHECK (true);
@@ -209,6 +226,7 @@ CREATE POLICY "allow_all" ON categories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON expenses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON movements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON personal_savings FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "allow_all" ON travel_trips FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "allow_all" ON travel_expenses FOR ALL USING (true) WITH CHECK (true);</code></pre>
         <button class="btn" id="copy-schema-btn" type="button">Copiar Schema</button>
     </div>
@@ -278,7 +296,7 @@ CREATE POLICY "allow_all" ON travel_expenses FOR ALL USING (true) WITH CHECK (tr
 
         async function verifySchema() {
             if (!supabaseClient) await init();
-            const tables = ['months', 'fortnights', 'categories', 'expenses', 'movements', 'personal_savings', 'travel_expenses'];
+            const tables = ['months', 'fortnights', 'categories', 'expenses', 'movements', 'personal_savings', 'travel_trips', 'travel_expenses'];
             let allOk = true;
             
             for (const t of tables) {
